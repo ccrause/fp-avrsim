@@ -217,6 +217,7 @@ begin
       32: write(char(v));
       33: fExitCode := v;
       34: fExitRequested := ((v and 1) = 1);
+      48..51: write(hexstr(v,2));
    else
       result := false;
    end;
