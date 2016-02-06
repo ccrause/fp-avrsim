@@ -24,6 +24,10 @@
    
    Ported to Object Pascal by Jeppe Johansen - jeppe@j-software.dk
 }
+
+{ $define TRACE_ALL}
+{ $define TRACE_CALLS}
+
 unit avr;
 
 {$mode objfpc}{$H+}
@@ -471,6 +475,9 @@ var
    branch: boolean;
 begin
    opcode := (fFLASH[fPC + 1] shl 8) or fFLASH[fPC];
+{$ifdef TRACE_ALL}
+   writeln(StdErr,'$'+hexstr(fPC,4),': ','$'+hexstr(opcode,4));
+{$endif TRACE_ALL}
    new_pc := fPC + 2; // future 'default' fPC
    cycle := 1;
    case (opcode and $f000) of
@@ -902,6 +909,9 @@ begin
                      Push16(new_pc shr 1);
                   end;
                   new_pc := z shl 1;
+{$ifdef TRACE_CALLS}
+                  writeln(StdErr,'Indirect call/jmp to: $',hexstr(new_pc,4));
+{$endif TRACE_CALLS}
                   Inc(cycle);
                end;
                $9518, // RETI
@@ -1228,6 +1238,9 @@ begin
                         new_pc := new_pc + 2;
                         Push16(new_pc shr 1);
                         new_pc := a shl 1;
+{$ifdef TRACE_CALLS}
+                        writeln(StdErr,'CALL $',hexstr(new_pc,4));
+{$endif TRACE_CALLS}
                         cycle := cycle + 3; // 4 cycles; FIXME 5 on devices with 22 bit fPC
                      end;
                      else
@@ -1387,6 +1400,9 @@ begin
          //fState('rcall .%d [%04x]\n', o, new_pc + (o shl 1));
          Push16(new_pc shr 1);
          new_pc := new_pc + (o shl 1);
+{$ifdef TRACE_CALLS}
+         writeln(StdErr,'RCALL $',hexstr(new_pc,4));
+{$endif TRACE_CALLS}
          cycle := cycle + 2;
          // 'rcall .1' is used as a cheap 'push 16 bits of room on the stack'
       end;
