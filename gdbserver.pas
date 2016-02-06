@@ -378,7 +378,7 @@ procedure TGDBServerListener.Connect(Sender: TObject; Data: TSocketStream);
 procedure TGDBServerListener.Idle(Sender: TObject);
   begin
     if terminated then
-      fServer.StopAccepting(true);
+      fServer.StopAccepting;
   end;
 
 procedure TGDBServerListener.Execute;
@@ -415,7 +415,7 @@ destructor TGDBServerListener.Destroy;
     i: longint;
   begin
     Terminate;
-    fServer.StopAccepting(true);
+    fServer.StopAccepting;
     WaitFor;
 
     for i := fClients.count-1 downto 0 do
