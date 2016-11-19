@@ -334,6 +334,9 @@ var
       inherited Destroy;
     end;
 
+var
+  Filename : String;
+
 begin
   if (not (Paramcount in [1,2])) or
      ((Paramcount=2) and (pos('-d',ParamStr(1))<>1)) then
@@ -345,16 +348,23 @@ begin
 
   if not FileExists(ParamStr(Paramcount)) then
     begin
-      writeln('Simulator: File not found');
-      halt(-100000);
-    end;
+      if not FileExists(ParamStr(Paramcount)+'.bin') then
+        begin
+          writeln('Simulator: File not found: ',ParamStr(Paramcount));
+          halt(-100000);
+        end
+      else
+        Filename:=ParamStr(Paramcount)+'.bin';
+    end
+  else
+    Filename:=ParamStr(Paramcount);
 
   try
     if (Paramcount=2) then
       begin
         fHandler:=TDebugAVR.Create;
         try
-          fHandler.AVR.LoadFlashBinary(ParamStr(2));
+          fHandler.AVR.LoadFlashBinary(Filename);
 
           port:=ParamStr(1);
           delete(port,1,2);
@@ -377,7 +387,7 @@ begin
       begin
         x := TAvr.Create;
         try
-           x.LoadFlashBinary(ParamStr(1));
+           x.LoadFlashBinary(Filename);
 
            while not x.DoExit do
               x.Step(10);
