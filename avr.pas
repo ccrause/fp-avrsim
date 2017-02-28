@@ -75,7 +75,7 @@ type
 
     function GetIO(r: word; var v: byte): boolean;
     function SetIO(r, v: byte): boolean;
-    procedure SetReg(r, v: byte);
+    procedure SetReg(r, v: byte);inline;
 
     function GetRAM(addr: word): byte;
     procedure SetRAM(addr: word; v: byte);
@@ -87,9 +87,9 @@ type
     procedure Push16(v: word);
     function Pop16(): word;
 
-    procedure get_r_d_10(o: word; out r, d, vd, vr: byte);
-    procedure get_r_dd_10(o: word; out r, d, vr: byte);
-    procedure get_k_r16(o: word; out r, k: byte);
+    procedure get_r_d_10(o: word; out r, d, vd, vr: byte);inline;
+    procedure get_r_dd_10(o: word; out r, d, vr: byte);inline;
+    procedure get_k_r16(o: word; out r, k: byte);inline;
 
     function InterruptPending: boolean;
 
@@ -223,7 +223,7 @@ begin
    end;
 end;
 
-procedure TAvr.SetReg(r, v: byte);
+procedure TAvr.SetReg(r, v: byte);inline;
 begin
    //REG_TOUCH(r);
    if (r = R_SREG) then
@@ -371,7 +371,7 @@ begin
    vr := fData[r];
 end;
 
-procedure TAvr.get_r_dd_10(o: word; out r, d, vr: byte);
+procedure TAvr.get_r_dd_10(o: word; out r, d, vr: byte);inline;
 begin
    r := ((o shr 5) and $10) or (o and $f);
    d := (o shr 4) and $1f;
