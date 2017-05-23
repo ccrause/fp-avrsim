@@ -1,3 +1,5 @@
+{$mode objfpc}
+{$H+}
 program avrsim;
 
 uses {$ifdef UNIX}
