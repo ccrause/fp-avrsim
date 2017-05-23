@@ -58,6 +58,8 @@ type
     fExitRequested: boolean;
     fExitCode: byte;
 
+    StopOnJmpCallToZero : boolean;
+
     function GetData(AIndex: longint): byte;
     function GetFlash(AIndex: longint): byte;
     function GetSREG: byte;
@@ -218,6 +220,7 @@ begin
       33: fExitCode := v;
       34: fExitRequested := ((v and 1) = 1);
       48..51: write(hexstr(v,2));
+      52: StopOnJmpCallToZero:=v<>0;
    else
       result := false;
    end;
@@ -910,6 +913,8 @@ begin
                      Push16(new_pc shr 1);
                   end;
                   new_pc := z shl 1;
+                  if (new_pc=0) and StopOnJmpCallToZero then
+                    raise Exception.Create('ICALL/IJMP/EIJMP/EICALL to 0');
 {$ifdef TRACE_CALLS}
                   writeln(StdErr,'Indirect call/jmp to: $',hexstr(new_pc,4));
 {$endif TRACE_CALLS}
@@ -1227,6 +1232,8 @@ begin
                         a := (a shl 16) or x;
                         //fState('jmp $%06x\n', a);
                         new_pc := a shl 1;
+                        if (new_pc=0) and StopOnJmpCallToZero then
+                          raise Exception.Create('JMP to 0');
                         cycle := cycle + 2;
                      end;
                      $940e,
@@ -1239,6 +1246,8 @@ begin
                         new_pc := new_pc + 2;
                         Push16(new_pc shr 1);
                         new_pc := a shl 1;
+                        if (new_pc=0) and StopOnJmpCallToZero then
+                          raise Exception.Create('CALL to 0');
 {$ifdef TRACE_CALLS}
                         writeln(StdErr,'CALL $',hexstr(new_pc,4));
 {$endif TRACE_CALLS}
@@ -1548,6 +1557,7 @@ begin
    fPC := 0;
    fExitRequested := false;
    fExitCode := 0;
+   StopOnJmpCallToZero := false;
 end;
 
 end.
