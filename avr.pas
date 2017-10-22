@@ -37,7 +37,7 @@ interface
 uses sysutils;
 
 type
-   TFlashAddr = word;
+   TFlashAddr = dword;
 
    TAvrState = (cpu_Sleeping, cpu_StepDone);
 
@@ -50,6 +50,7 @@ type
     fData: array of byte;
     fFLASH: array of byte;
     fPC: TFlashAddr;
+    fPCMask : TFlashAddr;
     fSREG: array[TSregField] of boolean;
     fState: TAvrState;
 
@@ -86,6 +87,8 @@ type
     function Pop8: byte;
     procedure Push16(v: word);
     function Pop16(): word;
+    procedure Push24(v: dword);
+    function Pop24(): dword;
 
     procedure get_r_d_10(o: word; out r, d, vd, vr: byte);inline;
     procedure get_r_dd_10(o: word; out r, d, vr: byte);inline;
@@ -349,16 +352,33 @@ begin
    Result := res;
 end;
 
+procedure TAvr.Push24(v: dword);
+begin
+   Push8(v);
+   Push8(v shr 8);
+   Push8(v shr 16);
+end;
+
+function TAvr.Pop24(): dword;
+var
+   res: word;
+begin
+   res := Pop8() shl 16;
+   res := res or (Pop8() shl 8);
+   res := res or Pop8();
+   Result := res;
+end;
+
 {
  * Called when an invalid opcode is decoded
  }
 procedure TAvr.InvalidOpcode;
 begin
 {#if CONFIG_SIMAVR_TRACE then
-   printf( FONT_RED '*** %04x: %-25s Invalid Opcode SP:=%04x O:=%04x \n' FONT_DEFAULT,
+   printf( FONT_RED '*** %06x: %-25s Invalid Opcode SP:=%04x O:=%04x \n' FONT_DEFAULT,
          fPC, trace_data^.codeline[pcshr1]^.symbol, GetSP(), fFLASH[fPC] or (fFLASH[fPC+1]shl8));
 #else
-   AVR_LOG(LOG_ERROR, FONT_RED 'CORE: *** %04x: Invalid Opcode SP:=%04x O:=%04x \n' FONT_DEFAULT,
+   AVR_LOG(LOG_ERROR, FONT_RED 'CORE: *** %06x: Invalid Opcode SP:=%04x O:=%04x \n' FONT_DEFAULT,
          fPC, GetSP(), fFLASH[fPC] or (fFLASH[fPC+1]shl8));
 #endif then}
 end;
@@ -477,9 +497,9 @@ var
 begin
    opcode := (fFLASH[fPC + 1] shl 8) or fFLASH[fPC];
 {$ifdef TRACE_ALL}
-   writeln(StdErr,'$'+hexstr(fPC,4),': ','$'+hexstr(opcode,4));
+   writeln(StdErr,'$'+hexstr(fPC,PopCnt(fPCMask) div 4),': ','$'+hexstr(opcode,4));
 {$endif TRACE_ALL}
-   new_pc := fPC + 2; // future 'default' fPC
+   new_pc := (fPC + 2) and fPCMask; // future 'default' fPC
    cycle := 1;
    case (opcode and $f000) of
       $0000:
@@ -633,12 +653,12 @@ begin
                begin
                   if (Is32bitInstr(new_pc)) then
                   begin
-                     new_pc := new_pc + 4;
+                     new_pc := (new_pc + 4) and fPCMask;
                      Inc(cycle, 2);
                   end
                   else
                   begin
-                     new_pc := new_pc + 2;
+                     new_pc := (new_pc + 2) and fPCMask;
                      Inc(cycle);
                   end;
                end;
@@ -907,18 +927,24 @@ begin
                   if (p <> 0) then
                   begin
                      Inc(cycle);
-                     Push16(new_pc shr 1);
+                     if fPCMask=$ffff then
+                       Push16(new_pc shr 1)
+                     else
+                       Push24(new_pc shr 1);
                   end;
-                  new_pc := z shl 1;
+                  new_pc := (z shl 1) and fPCMask;
 {$ifdef TRACE_CALLS}
-                  writeln(StdErr,'Indirect call/jmp to: $',hexstr(new_pc,4));
+                  writeln(StdErr,'Indirect call/jmp to: $',hexstr(new_pc,PopCnt(fPCMask) div 4));
 {$endif TRACE_CALLS}
                   Inc(cycle);
                end;
                $9518, // RETI
                $9508:
                begin // RET
-                  new_pc := Pop16() shl 1;
+                  if fPCMask=$ffff then
+                    new_pc := Pop16() shl 1
+                  else
+                    new_pc := Pop24() shl 1;
                   if (opcode and $10) <> 0 then // reti
                      fSREG[S_I] := true;
                   cycle := cycle + 3;
@@ -952,7 +978,7 @@ begin
                      begin // LDS Load Direct from fData Space, 32 bits
                         r := (opcode shr 4) and $1f;
                         x := (fFLASH[new_pc + 1] shl 8) or fFLASH[new_pc];
-                        new_pc := new_pc + 2;
+                        new_pc := (new_pc + 2) and fPCMask;
                         //fState('lds %s[%02x], $%04x\n', avr_regname(r), fData[r], x);
                         SetReg(r, GetRAM(x));
                         Inc(cycle); // 2 cycles
@@ -1070,7 +1096,7 @@ begin
                      begin // STS not  Store Direct to fData Space, 32 bits
                         r := (opcode shr 4) and $1f;
                         x := (fFLASH[new_pc + 1] shl 8) or fFLASH[new_pc];
-                        new_pc := new_pc + 2;
+                        new_pc := (new_pc + 2) and fPCMask;
                         //fState('sts $%04x, %s[%02x]\n', x, avr_regname(r), fData[r]);
                         Inc(cycle);
                         SetRAM(x, fData[r]);
@@ -1226,7 +1252,7 @@ begin
                         x := (fFLASH[new_pc + 1] shl 8) or fFLASH[new_pc];
                         a := (a shl 16) or x;
                         //fState('jmp $%06x\n', a);
-                        new_pc := a shl 1;
+                        new_pc := (a shl 1) and fPCMask;
                         cycle := cycle + 2;
                      end;
                      $940e,
@@ -1236,11 +1262,14 @@ begin
                         x := (fFLASH[new_pc + 1] shl 8) or fFLASH[new_pc];
                         a := (a shl 16) or x;
                         //fState('call $%06x\n', a);
-                        new_pc := new_pc + 2;
-                        Push16(new_pc shr 1);
-                        new_pc := a shl 1;
+                        new_pc := (new_pc + 2) and fPCMask;
+                        if fPCMask=$ffff then
+                          Push16(new_pc shr 1)
+                        else
+                          Push24(new_pc shr 1);
+                        new_pc := (a shl 1) and fPCMask;
 {$ifdef TRACE_CALLS}
-                        writeln(StdErr,'CALL $',hexstr(new_pc,4));
+                        writeln(StdErr,'CALL $',hexstr(new_pc,PopCnt(fPCMask) div 4));
 {$endif TRACE_CALLS}
                         cycle := cycle + 3; // 4 cycles; FIXME 5 on devices with 22 bit fPC
                      end;
@@ -1302,12 +1331,12 @@ begin
                               begin
                                  if (Is32bitInstr(new_pc)) then
                                  begin
-                                    new_pc := new_pc + 4;
+                                    new_pc := (new_pc + 4) and fPCMask;
                                     cycle := cycle + 2;
                                  end
                                  else
                                  begin
-                                    new_pc := new_pc + 2;
+                                    new_pc := (new_pc + 2) and fPCMask;
                                     Inc(cycle);
                                  end;
                               end;
@@ -1331,12 +1360,12 @@ begin
                               begin
                                  if (Is32bitInstr(new_pc)) then
                                  begin
-                                    new_pc := new_pc + 4;
+                                    new_pc := (new_pc + 4) and fPCMask;
                                     cycle := cycle + 2;
                                  end
                                  else
                                  begin
-                                    new_pc := new_pc + 2;
+                                    new_pc := (new_pc + 2) and fPCMask;
                                     Inc(cycle);
                                  end;
                               end;
@@ -1389,8 +1418,8 @@ begin
          // RJMP 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
          o := (smallint((opcode shl 4) and $ffff)) shr 4;
-         //fState('rjmp .%d [%04x]\n', o, new_pc + (o shl 1));
-         new_pc := new_pc + (o shl 1);
+         //fState('rjmp .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
+         new_pc := (new_pc + (o shl 1)) and fPCMask;
          Inc(cycle);
       end;
       $d000:
@@ -1398,11 +1427,14 @@ begin
          // RCALL 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
          o := (smallint((opcode shl 4) and $ffff)) shr 4;
-         //fState('rcall .%d [%04x]\n', o, new_pc + (o shl 1));
-         Push16(new_pc shr 1);
-         new_pc := new_pc + (o shl 1);
+         //fState('rcall .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
+         if fPCMask=$ffff then
+           Push16(new_pc shr 1)
+         else
+           Push24(new_pc shr 1);
+         new_pc := (new_pc + (o shl 1)) and fPCMask;
 {$ifdef TRACE_CALLS}
-         writeln(StdErr,'RCALL $',hexstr(new_pc,4));
+         writeln(StdErr,'RCALL $',hexstr(new_pc,PopCnt(fPCMask) div 4));
 {$endif TRACE_CALLS}
          cycle := cycle + 2;
          // 'rcall .1' is used as a cheap 'push 16 bits of room on the stack'
@@ -1431,14 +1463,14 @@ begin
                   begin 'brcs', 'breq', 'brmi', 'brvs', NULL, 'brhs', 'brts', 'brie'end,;
                end;;
                if (names[_set][s]) then begin
-                  //fState('%s .%d [%04x]\t; Will%s branch\n', names[_set][s], o, new_pc + (o shl 1), branch ? '':' not');
+                  //fState('%s .%d [%06x]\t; Will%s branch\n', names[_set][s], o, (new_pc + (o shl 1)) and fPCMask, branch ? '':' not');
                end else begin
-                  //fState('%s%c .%d [%04x]\t; Will%s branch\n', _set ? 'brbs' : 'brbc', _sreg_bit_name[s], o, new_pc + (o shl 1), branch ? '':' not');
+                  //fState('%s%c .%d [%06x]\t; Will%s branch\n', _set ? 'brbs' : 'brbc', _sreg_bit_name[s], o, (new_pc + (o shl 1)) and fPCMask, branch ? '':' not');
                end;}
                if (branch) then
                begin
                   Inc(cycle); // 2 cycles if taken, 1 otherwise then
-                  new_pc := new_pc + (o shl 1);
+                  new_pc := (new_pc + (o shl 1)) and fPCMask;
                end;
             end;
             $f800,
@@ -1473,12 +1505,12 @@ begin
                begin
                   if (Is32bitInstr(new_pc)) then
                   begin
-                     Inc(new_pc, 4);
+                     new_pc := (new_pc + 4) and fPCMask;
                      Inc(cycle, 2);
                   end
                   else
                   begin
-                     Inc(new_pc, 2);
+                     new_pc := (new_pc + 2) and fPCMask;
                      Inc(cycle);
                   end;
                end;
@@ -1517,7 +1549,7 @@ begin
    for i := 0 to Count - 1 do
    begin
       newPc := RunOne;
-      //writeln(inttohex(fPC, 4)+'->', IntToHex(newPc, 4));
+      //writeln(inttohex(fPC, PopCnt(fPCMask) div 4)+'->', IntToHex(newPc, PopCnt(fPCMask) div 4));
       fPC := newPc;
    end;
 end;
@@ -1548,6 +1580,7 @@ begin
    fPC := 0;
    fExitRequested := false;
    fExitCode := 0;
+   fPCMask:=$ffff;
 end;
 
 end.
