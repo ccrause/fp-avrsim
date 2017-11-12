@@ -61,9 +61,11 @@ type
 
     StopOnJmpCallToZero : boolean;
 
+    function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
     function GetFlash(AIndex: longint): byte;
     function GetSREG: byte;
+    procedure SetAVR6(AValue : boolean);
     procedure SetData(AIndex: longint; AValue: byte);
     procedure SetFlash(AIndex: longint; AValue: byte);
 
@@ -110,7 +112,7 @@ type
     procedure WriteFlash(const Data; Count, Offset: longint);
     procedure LoadFlashBinary(const AFilename: string);
 
-    constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024);
+    constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024;AVR6 : Boolean = false);
 
     property RAM[AIndex: longint]: byte read GetData write SetData;
     property Flash[AIndex: longint]: byte read GetFLASH write SetFLASH;
@@ -122,6 +124,7 @@ type
 
     property DoExit: boolean read fExitRequested;
     property ExitCode: byte read fExitCode;
+    property AVR6: boolean read GetAVR6 write SetAVR6;
    end;
 
 const
@@ -167,6 +170,14 @@ begin
    ReadSREG(result);
 end;
 
+procedure TAvr.SetAVR6(AValue : boolean);
+begin
+  if AValue then
+    fPCMask:=$3fffff
+  else
+    fPCMask:=$ffff;
+end;
+
 procedure TAvr.SetFlash(AIndex: longint; AValue: byte);
 begin
    fFLASH[AIndex] := AValue;
@@ -175,6 +186,11 @@ end;
 function TAvr.GetData(AIndex: longint): byte;
 begin
    Result := fData[AIndex];
+end;
+
+function TAvr.GetAVR6 : boolean;
+begin
+  Result:=fPCMask=$3fffff;
 end;
 
 procedure TAvr.SetData(AIndex: longint; AValue: byte);
@@ -1579,7 +1595,7 @@ begin
    CloseFile(fil);
 end;
 
-constructor TAvr.Create(AFlashSize: longint; ARamSize: longint);
+constructor TAvr.Create(AFlashSize : longint; ARamSize : longint; AVR6 : Boolean);
 begin
    inherited Create;
 
@@ -1590,7 +1606,10 @@ begin
    fExitRequested := false;
    fExitCode := 0;
    StopOnJmpCallToZero := false;
-   fPCMask:=$ffff;
+   if AVR6 then
+     fPCMask:=$3fffff
+   else
+     fPCMask:=$ffff;
 end;
 
 end.
