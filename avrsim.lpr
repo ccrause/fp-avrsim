@@ -338,38 +338,61 @@ var
 
 var
   Filename : String;
+  RunInDebugger,
+  SimulateAVR6 : Boolean;
+  i : Integer;
+
+procedure InvalidCommandline;
+  begin
+    writeln('Simulator: Invalid command line');
+    writeln('Usage: avrsim [-d<port>] [-6] <bin-file>');
+    halt(-100001);
+  end;
 
 begin
-  if (not (Paramcount in [1,2])) or
-     ((Paramcount=2) and (pos('-d',ParamStr(1))<>1)) then
-    begin
-      writeln('Simulator: Invalid command line');
-      writeln('Usage: avrsim [-d<port>] <bin-file>');
-      halt(-100001);
+  RunInDebugger:=false;
+  SimulateAVR6:=false;
+  for i:=1 to ParamCount do
+    case Copy(ParamStr(i),1,2) of
+      '-d':
+        begin
+          RunInDebugger:=true;
+          port:=ParamStr(i);
+          delete(port,1,2);
+        end;
+      '-6':
+        SimulateAVR6:=true;
+      else
+        begin
+          if i=Paramcount then
+            begin
+              if not FileExists(ParamStr(i)) then
+                begin
+                  if not FileExists(ParamStr(i)+'.bin') then
+                    begin
+                      writeln('Simulator: File not found: ',ParamStr(Paramcount));
+                      halt(-100000);
+                    end
+                  else
+                    Filename:=ParamStr(Paramcount)+'.bin';
+                end
+              else
+                Filename:=ParamStr(Paramcount);
+            end
+          else
+            InvalidCommandline;
+        end;
     end;
 
-  if not FileExists(ParamStr(Paramcount)) then
-    begin
-      if not FileExists(ParamStr(Paramcount)+'.bin') then
-        begin
-          writeln('Simulator: File not found: ',ParamStr(Paramcount));
-          halt(-100000);
-        end
-      else
-        Filename:=ParamStr(Paramcount)+'.bin';
-    end
-  else
-    Filename:=ParamStr(Paramcount);
-
   try
-    if (Paramcount=2) then
+    if RunInDebugger then
       begin
         fHandler:=TDebugAVR.Create;
+
+        fHandler.AVR.AVR6:=SimulateAVR6;
+
         try
           fHandler.AVR.LoadFlashBinary(Filename);
-
-          port:=ParamStr(1);
-          delete(port,1,2);
 
           fserv := TGDBServerListener.Create(strtoint(port), fHandler);
           try
@@ -388,15 +411,18 @@ begin
     else
       begin
         x := TAvr.Create;
+
+        x.AVR6:=SimulateAVR6;
+
         try
-           x.LoadFlashBinary(Filename);
+          x.LoadFlashBinary(Filename);
 
-           while not x.DoExit do
-              x.Step(10);
+          while not x.DoExit do
+             x.Step(10);
 
-           ExitCode := x.ExitCode;
+          ExitCode := x.ExitCode;
         finally
-           x.Free;
+          x.Free;
         end;
       end;
   except
