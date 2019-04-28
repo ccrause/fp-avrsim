@@ -19,6 +19,6 @@ Normal simulation
 
 Starts a new simulation, halts at address 0, and waits for GDB Remote connections on the given port(2159 in this example).
 
-*avrsim -6 file.bin
+*avrsim -6 file.bin*
 
 Simulates avr6
