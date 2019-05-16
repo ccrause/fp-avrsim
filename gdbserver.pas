@@ -34,10 +34,14 @@ type
 
     procedure SetBreakHit(AEvent: TBreakNotify);
 
+    function SupportedOptions: string;
+
     procedure Reset;
 
     procedure SetBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
+
+    function BreakpointHit: boolean;
   end;
 
   TGDBServer = class(TThread)
@@ -300,12 +304,18 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
           else
             Respond('E00');
         end;
-      'R':
+     'q':
+        if pos('Supported', APacket) > 0 then
+          Respond(fHandler.SupportedOptions)
+        else
+          exit(false);
+     'R':
         begin
           fHandler.Reset;
         end;
-      {'Z':
+      'Z':     // Z0,9e,2
         begin
+          delete(APacket,1,1);
           if pos(':',APacket)>0 then
             exit(false);
 
@@ -319,6 +329,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         end;
       'z':
         begin
+          delete(APacket,1,1);
           if pos(':',APacket)>0 then
             exit(false);
 
@@ -329,17 +340,26 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
           fHandler.RemoveBreakpoint(typ,addr,kind);
 
           Respond('OK');
-        end}
+        end
     else
       exit(false);
     end;
   end;
 
 procedure TGDBServer.Execute;
+  var
+    oldBreak: boolean = false;
+    newBreak: boolean;
   begin
     while not terminated do
       begin
         ReadPacket;
+        newBreak := fHandler.BreakpointHit;
+        if newBreak and not oldBreak then
+        begin
+          BreakHit;
+        end;
+        oldBreak := newBreak;
       end;
   end;
 

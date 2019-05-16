@@ -52,6 +52,8 @@ type
     constructor Create(AAvr: TAvr);
   end;
 
+  { TDebugAVR }
+
   TDebugAVR = class(TInterfacedObject, IGDBHandler)
   private
     fAVR: TAvr;
@@ -74,7 +76,8 @@ type
     function Write(const ABuffer; AAddr, ALen: int64): boolean;
     function WriteReg(AAddr, AVal: int64): boolean;
     procedure SetBreakHit(AEvent: TBreakNotify);
-
+    function SupportedOptions: string;
+    function BreakpointHit: boolean;
     constructor Create;
     destructor Destroy; override;
 
@@ -106,24 +109,61 @@ var
     end;
 
   procedure TAVRRunner.Execute;
+    var
+      i: integer;
     begin
       while not Terminated do
       begin
         fLock.Enter;
 
         if fState = rsRunning then
+        begin
           fAvr.Step(1);
+          i := high(fBreakpoints);
+          while i > -1 do
+          begin
+            if fBreakpoints[i] = fAvr.PC then
+            begin
+              TBreakableAVR(fAvr).BreakHit;
+              i := -1;
+              fState := rsBreak;
+            end
+            else
+              dec(i);
+          end;
+        end;
 
         fLock.Leave;
       end;
     end;
 
   procedure TAVRRunner.AddBreak(AAddr: longword);
+    var
+      i: integer;
     begin
+      for i := low(fBreakpoints) to high(fBreakpoints) do
+        if fBreakpoints[i] = AAddr then exit; // keep only one copy of a BP address
+      SetLength(fBreakpoints, Length(fBreakpoints)+1);
+      fBreakpoints[Length(fBreakpoints)-1] := AAddr;
     end;
 
   procedure TAVRRunner.RemoveBreak(AAddr: longword);
+    var
+      i: integer;
     begin
+      i := low(fBreakpoints);
+      while (fBreakpoints[i] <> AAddr) and (i < high(fBreakpoints)) do
+        inc(i);
+
+      if (AAddr = fBreakpoints[i]) then
+      begin
+        if i < high(fBreakpoints) then
+        begin
+          while i < high(fBreakpoints)-1 do
+          fBreakpoints[i] := fBreakpoints[i+1];
+        end;
+        SetLength(fBreakpoints, Length(fBreakpoints)-1);
+      end;
     end;
 
   function TAVRRunner.DoBreak: TRunnerState;
@@ -257,7 +297,7 @@ var
 
   procedure TDebugAVR.RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
     begin
-
+      fRunner.RemoveBreak(AAddr);
     end;
 
   procedure TDebugAVR.Reset;
@@ -266,7 +306,7 @@ var
 
   procedure TDebugAVR.SetBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
     begin
-
+      fRunner.AddBreak(AAddr);
     end;
 
   function TDebugAVR.SingleStep: TStopReply;
@@ -311,6 +351,16 @@ var
     begin
       TBreakableAVR(fAVR).OnBreak:=AEvent;
     end;
+
+  function TDebugAVR.SupportedOptions: string;
+  begin
+    result := 'hwbreak+;swbreak+;';
+  end;
+
+  function TDebugAVR.BreakpointHit: boolean;
+  begin
+    result := fRunner.fState = rsBreak;
+  end;
 
   constructor TDebugAVR.Create;
     begin
