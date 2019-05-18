@@ -283,8 +283,8 @@ end;
 
 procedure TAvr.SetSP(sp: word);
 begin
-   SetReg(R_SPL, sp);
-   SetReg(R_SPH, sp shr 8);
+   SetReg(R_SPL, byte(sp));
+   SetReg(R_SPH, byte(sp shr 8));
 end;
 
 {
@@ -358,8 +358,8 @@ end;
 
 procedure TAvr.Push16(v: word);
 begin
-   Push8(v);
-   Push8(v shr 8);
+   Push8(byte(v));
+   Push8(byte(v shr 8));
 end;
 
 function TAvr.Pop16(): word;
@@ -534,7 +534,7 @@ begin
                   $0400:
                   begin // CPC compare with carry 0000 01rd dddd rrrr
                      get_r_d_10(opcode, r, d, vd, vr);
-                     res := vd - vr - ord(fSREG[S_C]);
+                     res := byte(vd - vr - ord(fSREG[S_C]));
                      //fState('cpc %s[%02x], %s[%02x] := %02x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                      if (res <> 0) then
                         fSREG[S_Z] := false;
@@ -549,7 +549,7 @@ begin
                   $0c00:
                   begin // ADD without carry 0000 11 rd dddd rrrr
                      get_r_d_10(opcode, r, d, vd, vr);
-                     res := vd + vr;
+                     res := byte(vd + vr);
                      if (r = d) then
                      begin
                         //fState('lsl %s[%02x] := %02x\n', avr_regname(d), vd, res and $ff);
@@ -569,7 +569,7 @@ begin
                   $0800:
                   begin // SBC subtract with carry 0000 10rd dddd rrrr
                      get_r_d_10(opcode, r, d, vd, vr);
-                     res := vd - vr - ord(fSREG[S_C]);
+                     res := byte(vd - vr - ord(fSREG[S_C]));
                      //fState('sbc %s[%02x], %s[%02x] := %02x\n', avr_regname(d), fData[d], avr_regname(r), fData[r], res);
                      SetReg(d, res);
                      if (res <> 0) then
@@ -653,7 +653,7 @@ begin
             $1800:
             begin // SUB without carry 0000 10 rd dddd rrrr
                get_r_d_10(opcode, r, d, vd, vr);
-               res := vd - vr;
+               res := byte(vd - vr);
                //fState('sub %s[%02x], %s[%02x] := %02x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                SetReg(d, res);
                fSREG[S_Z] := (res = 0);
@@ -685,7 +685,7 @@ begin
             $1400:
             begin // CP Compare 0000 01 rd dddd rrrr
                get_r_d_10(opcode, r, d, vd, vr);
-               res := vd - vr;
+               res := byte(vd - vr);
                //fState('cp %s[%02x], %s[%02x] := %02x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                fSREG[S_Z] := (res = 0);
                fSREG[S_H] := get_compare_carry(res, vd, vr, 3);
@@ -785,7 +785,7 @@ begin
       begin // CPI 0011 KKKK rrrr KKKK
          get_k_r16(opcode, r, k);
          vr := fData[r];
-         res := vr - k;
+         res := byte(vr - k);
          //fState('cpi %s[%02x], $%02x\n', avr_regname(r), vr, k);
          fSREG[S_Z] := (res = 0);
          fSREG[S_H] := get_compare_carry(res, vr, k, 3);
@@ -798,7 +798,7 @@ begin
       begin // SBCI Subtract Immediate With Carry 0101 10 kkkk dddd kkkk
          get_k_r16(opcode, r, k);
          vr := fData[r];
-         res := vr - k - ord(fSREG[S_C]);
+         res := byte(vr - k - ord(fSREG[S_C]));
          //fState('sbci %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], k, res);
          SetReg(r, res);
          if (res <> 0) then
@@ -811,7 +811,7 @@ begin
       begin // SUB Subtract Immediate 0101 10 kkkk dddd kkkk
          get_k_r16(opcode, r, k);
          vr := fData[r];
-         res := vr - k;
+         res := byte(vr - k);
          //fState('subi %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], k, res);
          SetReg(r, res);
          fSREG[S_Z] := (res = 0);
@@ -1016,7 +1016,7 @@ begin
                         begin
                            Inc(z);
                            SetReg(R_ZH, z shr 8);
-                           SetReg(R_ZL, z);
+                           SetReg(R_ZL, byte(z));
                         end;
                         cycle := cycle + 2; // 3 cycles
                      end;
@@ -1079,7 +1079,7 @@ begin
                         if (op = 1) then
                            Inc(x);
                         SetReg(R_XH, x shr 8);
-                        SetReg(R_XL, x);
+                        SetReg(R_XL, byte(x));
                      end;
                      $9009,
                      $900a:
@@ -1137,7 +1137,7 @@ begin
                         if (op = 1) then
                            Inc(z);
                         SetReg(R_ZH, z shr 8);
-                        SetReg(R_ZL, z);
+                        SetReg(R_ZL, byte(z));
                      end;
                      $9201,
                      $9202:
@@ -1153,7 +1153,7 @@ begin
                         if (op = 1) then
                            Inc(z);
                         SetReg(R_ZH, z shr 8);
-                        SetReg(R_ZL, z);
+                        SetReg(R_ZL, byte(z));
                      end;
                      $900f:
                      begin // POP 1001 000d dddd 1111
@@ -1185,7 +1185,7 @@ begin
                      begin // NEG – Two’s Complement
                         r := (opcode shr 4) and $1f;
                         rd := fData[r];
-                        res := $00 - rd;
+                        res := byte($00 - rd);
                         //fState('neg %s[%02x] := %02x\n', avr_regname(r), rd, res);
                         SetReg(r, res);
                         fSREG[S_H] := odd((res shr 3) or (rd shr 3));
@@ -1205,7 +1205,7 @@ begin
                      $9403:
                      begin // INC – Increment
                         r := (opcode shr 4) and $1f;
-                        res := fData[r] + 1;
+                        res := byte(fData[r] + 1);
                         //fState('inc %s[%02x] := %02x\n', avr_regname(r), fData[r], res);
                         SetReg(r, res);
                         fSREG[S_Z] := (res = 0);
@@ -1258,7 +1258,7 @@ begin
                      $940a:
                      begin // DEC – Decrement
                         r := (opcode shr 4) and $1f;
-                        res := fData[r] - 1;
+                        res := byte(fData[r] - 1);
                         //fState('dec %s[%02x] := %02x\n', avr_regname(r), fData[r], res);
                         SetReg(r, res);
                         fSREG[S_Z] := (res = 0);
@@ -1310,8 +1310,8 @@ begin
                               res32 := rdl or (rdh shl 8);
                               //fState('adiw %s:%s[%04x], $%02x\n', avr_regname(r), avr_regname(r+1), res32, k);
                               res32 := res32 + k;
-                              SetReg(r + 1, res32 shr 8);
-                              SetReg(r, res32);
+                              SetReg(r + 1, byte(res32 shr 8));
+                              SetReg(r, byte(res32));
                               fSREG[S_V] := (not odd(rdh shr 7)) and (odd(res32 shr 15));
                               fSREG[S_Z] := ((res32 and $ffff) = 0);
                               fSREG[S_N] := odd(res32 shr 15);
@@ -1328,8 +1328,8 @@ begin
                               res32 := rdl or (rdh shl 8);
                               //fState('sbiw %s:%s[%04x], $%02x\n', avr_regname(r), avr_regname(r+1), res, k);
                               res32 := res32 - k;
-                              SetReg(r + 1, res32 shr 8);
-                              SetReg(r, res32);
+                              SetReg(r + 1, byte(res32 shr 8));
+                              SetReg(r, byte(res32));
                               fSREG[S_V] := odd(rdh shr 7) and (odd(not (res32 shr 15)));
                               fSREG[S_Z] := ((res32 and $ffff) = 0);
                               fSREG[S_N] := odd(res32 shr 15);
@@ -1403,8 +1403,8 @@ begin
                                     res16 := vd * vr;
                                     //fState('mul %s[%02x], %s[%02x] := %04x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                                     Inc(cycle);
-                                    SetReg(0, res16);
-                                    SetReg(1, res16 shr 8);
+                                    SetReg(0, byte(res16));
+                                    SetReg(1, byte(res16 shr 8));
                                     fSREG[S_Z] := (res16 = 0);
                                     fSREG[S_C] := (res16 shr 15)<>0;
                                  end;
@@ -1479,7 +1479,7 @@ begin
             $f400,
             $f600:
             begin // All the fSREG branches
-               o := (smallint(opcode shl 6)) shr 9; // offset
+               o := byte((smallint(opcode shl 6)) shr 9); // offset
                s := opcode and 7;
                _set := (opcode and $0400) = 0; // this bit means BRXC otherwise BRXS
                branch := ((fSREG[TSregField(s)]) and _set) or ((not (fSREG[TSregField(s)])) and (not _set));
