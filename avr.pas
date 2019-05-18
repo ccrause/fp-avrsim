@@ -1479,7 +1479,7 @@ begin
             $f400,
             $f600:
             begin // All the fSREG branches
-               o := byte((smallint(opcode shl 6)) shr 9); // offset
+               o := smallint(smallint(opcode shl 6) shr 9); // offset
                s := opcode and 7;
                _set := (opcode and $0400) = 0; // this bit means BRXC otherwise BRXS
                branch := ((fSREG[TSregField(s)]) and _set) or ((not (fSREG[TSregField(s)])) and (not _set));
