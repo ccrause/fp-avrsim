@@ -88,6 +88,30 @@ implementation
 
 uses sockets;
 
+var
+  debugPrint: boolean = true;
+
+procedure dbgPrint(const c: char);
+begin
+  if debugPrint then write(c);
+end;
+
+procedure dbgPrintLn(const s: string);
+begin
+  if debugPrint then WriteLn(s);
+end;
+
+function AddrToString(Addr: TSockAddr): String;
+begin
+  {$IFNDEF WINDOWS}
+  Result := NetAddrToStr(Addr.sin_addr);
+  {$ELSE}
+  Result := inet_ntoa(Addr.sin_addr);
+  {$ENDIF}
+
+  Result := Result  + ':' + IntToStr(Addr.sin_port);
+end;
+
 procedure TGDBServer.ReadPacket;
   var
     c: char;
@@ -99,6 +123,7 @@ procedure TGDBServer.ReadPacket;
 
       if c=#$3 then
         begin
+          dbgPrintLn('-> <Ctrl-C>');
           fHandler.DoBreak;
           Respond(fHandler.GetStatus);
           fOldBreak := true;  // prevent additional break notifications
@@ -130,16 +155,23 @@ procedure TGDBServer.ReadPacket;
         s:=s+c;
         c:=char(fReadBuffer.ReadByte);
       end;
+    dbgPrintLn('-> ' + s);
     cksum:=strtoint('$'+char(fReadBuffer.ReadByte)+char(fReadBuffer.ReadByte));
 
     if calcSum=cksum then
       begin
-        fSock.WriteByte(byte('+'));
+        fSock.WriteByte(byte('+'));  dbgPrintLn('<- +');
         if not HandlePacket(s) then
+        begin
           Respond('');
+          dbgPrintLn('<- ''''');
+        end;
       end
     else
+    begin
       fSock.WriteByte(byte('-'));
+      dbgPrintLn('<- -');
+    end;
   end;
 
 function TGDBServer.CalcChecksum(const AStr: string): byte;
@@ -182,6 +214,7 @@ procedure TGDBServer.Respond(AStr: string);
     AStr:='$'+AStr+'#'+hexStr(cksum,2);
 
     fSock.Write(astr[1], length(astr));
+    dbgPrintLn('<- ' + AStr);
   end;
 
 procedure TGDBServer.Respond(ATyp: TStopReply);
@@ -390,6 +423,7 @@ constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; 
 
 procedure TGDBServerListener.Connect(Sender: TObject; Data: TSocketStream);
   begin
+    dbgPrintLn('Incoming connection from ' + AddrToString(Data.RemoteAddress));
     fClients.Add(TGDBServer.Create(self,data, fHandler));
   end;
 
