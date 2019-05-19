@@ -50,6 +50,7 @@ type
     fReadBuffer: TStream;
     fHandler: IGDBHandler;
     fSock: TSocketStream;
+    fOldBreak: boolean;
 
     procedure BreakHit;
     procedure ReadPacket;
@@ -99,10 +100,8 @@ procedure TGDBServer.ReadPacket;
       if c=#$3 then
         begin
           fHandler.DoBreak;
-
           Respond(fHandler.GetStatus);
-
-          exit;
+          fOldBreak := true;  // prevent additional break notifications
         end;
     until (c='$') or terminated;
 
@@ -113,7 +112,7 @@ procedure TGDBServer.ReadPacket;
     calcSum:=0;
     while c<>'#' do
       begin
-        calcSum:=calcSum+byte(c);
+        calcSum := byte(calcSum+byte(c));
 
         if c=#$7D then
           begin
@@ -131,7 +130,6 @@ procedure TGDBServer.ReadPacket;
         s:=s+c;
         c:=char(fReadBuffer.ReadByte);
       end;
-
     cksum:=strtoint('$'+char(fReadBuffer.ReadByte)+char(fReadBuffer.ReadByte));
 
     if calcSum=cksum then
@@ -151,7 +149,7 @@ function TGDBServer.CalcChecksum(const AStr: string): byte;
   begin
     c:=0;
     for i := 1 to length(astr) do
-      c:=c+byte(astr[i]);
+      c:=byte(c+byte(astr[i]));
     result:=c;
   end;
 
@@ -348,18 +346,18 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
 
 procedure TGDBServer.Execute;
   var
-    oldBreak: boolean = false;
     newBreak: boolean;
   begin
+    fOldBreak := fHandler.BreakpointHit;  // Start in rsBreak state by default.  No need to send this through since gdb starts with a status request (?)
     while not terminated do
       begin
         ReadPacket;
         newBreak := fHandler.BreakpointHit;
-        if newBreak and not oldBreak then
+        if newBreak and not fOldBreak then
         begin
           BreakHit;
         end;
-        oldBreak := newBreak;
+        fOldBreak := newBreak;
       end;
   end;
 
@@ -384,7 +382,7 @@ constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; 
     fOwner:=AOwner;
     fSock:=ASock;
     fReadBuffer:=fSock;//TReadBufStream.Create(fSock);
-
+    fOldBreak := false;
     fHandler.SetBreakHit(@BreakHit);
 
     inherited Create(false);
