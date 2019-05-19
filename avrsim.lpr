@@ -456,7 +456,7 @@ begin
             fserv.Free;
           end;
         finally;
-          fHandler.Free;
+          //fHandler.Free;  // This is automatically freed when fserv is destroyed because fserv hold an interface reference which gets decremented
         end;
       end
     else

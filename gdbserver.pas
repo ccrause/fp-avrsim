@@ -77,6 +77,8 @@ type
 
     procedure Connect(Sender: TObject; Data: TSocketStream);
     procedure Idle(Sender: TObject);
+
+    procedure FQueryConnect(Sender: TObject; ASocket: LongInt; var doaccept: Boolean);
   protected
     procedure Execute; override;
   public
@@ -245,7 +247,6 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         begin
           Respond(fHandler.GetStatus);
         end;
-      'k',
       'c':
         begin
           fHandler.Continue;
@@ -291,6 +292,14 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'H':
         begin
           Respond('OK');
+        end;
+      'D', 'k':
+        begin
+          if APacket[1] = 'D' then
+            dbgPrintLn('Client detached - terminating.')
+          else
+            dbgPrintLn('Client killed program - terminating.');
+          Terminate;
         end;
       'M':
         begin
@@ -392,6 +401,8 @@ procedure TGDBServer.Execute;
         end;
         fOldBreak := newBreak;
       end;
+    fSock.Free;
+    fOwner.Terminate;
   end;
 
 procedure TGDBServer.DoExit;
@@ -433,16 +444,31 @@ procedure TGDBServerListener.Idle(Sender: TObject);
       fServer.StopAccepting;
   end;
 
+procedure TGDBServerListener.FQueryConnect(Sender: TObject; ASocket: LongInt;
+  var doaccept: Boolean);
+begin
+  if fClients.Count > 0 then
+  begin
+    doaccept := false;
+    dbgPrintLn('Refusing new connection - already connected');
+  end
+  else
+  begin
+    doaccept := true;
+    dbgPrintLn('Accepting new connection');
+  end;
+end;
+
 procedure TGDBServerListener.Execute;
   begin
     fServer := TInetServer.Create(fPort);
+    fServer.AcceptIdleTimeOut := 100;
     try
-      fServer.Listen;
-
-      writeln('Listening for GDB connections on port ', fPort);
-
+      fServer.MaxConnections := 1;
+      fServer.OnConnectQuery := @FQueryConnect;
       fServer.OnIdle:=@Idle;
       fServer.OnConnect:=@Connect;
+      WriteLn('Listening for GDB connection on port ', fPort);
 
       while not Terminated do
         fServer.StartAccepting;
