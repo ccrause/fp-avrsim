@@ -115,8 +115,9 @@ var
       while not Terminated do
       begin
         fLock.Enter;
-
-        if fState = rsRunning then
+        if fState = rsBreak then
+          Sleep(1)
+        else
         begin
           fAvr.Step(1);
           i := high(fBreakpoints);
@@ -132,7 +133,6 @@ var
               dec(i);
           end;
         end;
-
         fLock.Leave;
       end;
     end;
@@ -169,6 +169,7 @@ var
   function TAVRRunner.DoBreak: TRunnerState;
     begin
       fLock.Enter;
+
       Result := fState;
 
       if fState <> rsBreak then
