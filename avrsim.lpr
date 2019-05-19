@@ -66,6 +66,7 @@ type
     procedure DoBreak;
     function GetRegisterString: string;
     function GetStatus: TStopReply;
+    function GetStatusStr: string;
     function Read(var ABuffer; AAddr, ALen: int64): boolean;
     function ReadReg(AAddr: int64; var AVal: int64): boolean;
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
@@ -160,7 +161,10 @@ var
         if i < high(fBreakpoints) then
         begin
           while i < high(fBreakpoints)-1 do
-          fBreakpoints[i] := fBreakpoints[i+1];
+          begin
+            fBreakpoints[i] := fBreakpoints[i+1];
+            inc(i);
+          end;
         end;
         SetLength(fBreakpoints, Length(fBreakpoints)-1);
       end;
@@ -275,6 +279,36 @@ var
 
       fRunner.UnBreak(old);
     end;
+
+  function TDebugAVR.GetStatusStr: string;
+  var
+    old: TRunnerState;
+    i: Integer;
+  begin
+    result := 'T';
+    old := fRunner.DoBreak;
+    case old of
+      rsBreak: result := result + '05hwbreak';
+      //srBreakPoint: s := result + '05swbreak';
+    end;
+
+    //// Register file
+    for i := 0 to 31 do
+      result := result + hexstr(i, 2) + ':' + hexstr(fAVR.RAM[i],2) + ';';
+
+    // SREG
+    result := result + '20:' + hexstr(fAVR.SREG,2) + ';';
+    // SP
+    result := result + '21:' + hexstr(fAVR.StackPointer and $FF,2)
+              + hexstr((fAVR.StackPointer shr 8) and $FF,2) + ';';
+    // PC
+    result := result + '22:' + hexstr(fAVR.PC and $FF,2)
+              + hexstr((fAVR.PC shr 8) and $FF,2)
+              + hexstr((fAVR.PC shr 16) and $FF,2)
+              + hexstr((fAVR.PC shr 24) and $FF,2)
+              + ';';
+    fRunner.UnBreak(old);
+  end;
 
   function TDebugAVR.Read(var ABuffer; AAddr, ALen: int64): boolean;
     var

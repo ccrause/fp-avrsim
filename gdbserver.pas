@@ -17,6 +17,7 @@ type
 
   IGDBHandler = interface
     function GetStatus: TStopReply;
+    function GetStatusStr: string;
     function Continue: TStopReply;
     function SingleStep: TStopReply;
 
@@ -127,7 +128,7 @@ procedure TGDBServer.ReadPacket;
         begin
           dbgPrintLn('-> <Ctrl-C>');
           fHandler.DoBreak;
-          Respond(fHandler.GetStatus);
+          Respond(fHandler.GetStatusStr);
           fOldBreak := true;  // prevent additional break notifications
         end;
     until (c='$') or terminated;
@@ -245,7 +246,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
     case APacket[1] of
       '?':
         begin
-          Respond(fHandler.GetStatus);
+          Respond(fHandler.GetStatusStr);
         end;
       'c':
         begin
@@ -254,7 +255,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       's':
         begin
           fHandler.SingleStep;
-          Respond(srOK);
+          Respond(fHandler.GetStatusStr);
         end;
       'i':
         begin
@@ -417,7 +418,7 @@ procedure TGDBServer.DoExit;
 
 procedure TGDBServer.BreakHit;
   begin
-    Respond(srOK);
+    Respond(fHandler.GetStatusStr);
   end;
 
 constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; AHandler: IGDBHandler);
