@@ -253,6 +253,8 @@ var
       for i := 0 to 31 do
         result:=result+hexstr(fAVR.RAM[i],2);
 
+      // Convert hex representation to lowercase, else gdb thinks reply starting with E is error
+      result := LowerCase(result);
       result:=result+hexstr(fAVR.SREG,2); // SReg
 
       result:=result+hexstr(fAVR.StackPointer and $FF,2); // SP
