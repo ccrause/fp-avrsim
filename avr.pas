@@ -1442,7 +1442,7 @@ begin
       begin
          // RJMP 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
-         o := (smallint((opcode shl 4) and $ffff)) shr 4;
+         o := smallint(opcode and $fff);
          //fState('rjmp .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
          new_pc := (new_pc + (o shl 1)) and fPCMask;
          Inc(cycle);
@@ -1451,7 +1451,7 @@ begin
       begin
          // RCALL 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
-         o := (smallint((opcode shl 4) and $ffff)) shr 4;
+         o := smallint(opcode and $fff);
          //fState('rcall .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
          if fPCMask=$ffff then
            Push16(new_pc shr 1)
@@ -1587,12 +1587,15 @@ end;
 procedure TAvr.LoadFlashBinary(const AFilename: string);
 var fil: File;
 begin
-   AssignFile(fil, AFilename);
-   reset(fil,1);
+   if FileExists(AFilename) then
+   begin
+      AssignFile(fil, AFilename);
+      reset(fil,1);
 
-   BlockRead(fil, fFLASH[0], FileSize(fil));
+      BlockRead(fil, fFLASH[0], FileSize(fil));
 
-   CloseFile(fil);
+      CloseFile(fil);
+   end;
 end;
 
 constructor TAvr.Create(AFlashSize : longint; ARamSize : longint; AVR6 : Boolean);
