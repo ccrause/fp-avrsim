@@ -215,10 +215,11 @@ var
 
   function TDebugAVR.ReadByte(AAddr: longword): byte;
     begin
-      if AAddr >= VMA_RAM then
-        result:=fAVR.RAM[AAddr-VMA_RAM]
-      else if AAddr >= VMA_FLASH then
-        result:=fAVR.Flash[AAddr-VMA_FLASH]
+      // Assume $800000+ indicates RAM/IOREGs
+      if (AAddr <= $FFFF) then
+        result := fAVR.Flash[AAddr]
+      else if (AAddr > VMA_RAM) and (AAddr < (VMA_RAM + $FFFF)) then
+        result := fAVR.RAM[(AAddr-VMA_RAM)]
       else
         result:=0;
     end;

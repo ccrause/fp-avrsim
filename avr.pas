@@ -101,6 +101,9 @@ type
     function InterruptPending: boolean;
 
     function RunOne: TFlashAddr;
+
+    function getRamSize: dword;
+    function getFlashSize: dword;
    protected
     procedure InvalidOpcode; virtual;
     procedure WatchdogReset; virtual;
@@ -125,6 +128,8 @@ type
     property DoExit: boolean read fExitRequested;
     property ExitCode: byte read fExitCode;
     property AVR6: boolean read GetAVR6 write SetAVR6;
+    property flashSize: dword read getFlashSize;
+    property ramSize: dword read getRamSize;
    end;
 
 const
@@ -1549,6 +1554,16 @@ begin
    end;
    cycle := cycle + cycle;
    Result := new_pc;
+end;
+
+function TAvr.getRamSize: dword;
+begin
+  result := length(fData);
+end;
+
+function TAvr.getFlashSize: dword;
+begin
+  result := length(fFLASH);
 end;
 
 procedure TAvr.WatchdogReset;
