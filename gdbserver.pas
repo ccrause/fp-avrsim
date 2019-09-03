@@ -43,7 +43,11 @@ type
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
 
     function BreakpointHit: boolean;
+    function MemoryMap(offset, len: dword): string;
+    procedure eraseFlash(addr, len: dword);
   end;
+
+  { TGDBServer }
 
   TGDBServer = class(TThread)
   private
@@ -100,8 +104,23 @@ begin
 end;
 
 procedure dbgPrintLn(const s: string);
+var
+  i: integer;
 begin
-  if debugPrint then WriteLn(s);
+  if debugPrint then
+  begin
+    i := 1;
+    while i <= length(s) do
+    begin
+      if (ord(s[i]) > 31) and (ord(s[i]) < 127) then
+        write(s[i])
+      else
+        write('.');
+
+      inc(i);
+    end;
+    WriteLn();
+  end;
 end;
 
 function AddrToString(Addr: TSockAddr): String;
@@ -150,7 +169,7 @@ procedure TGDBServer.ReadPacket;
             if c='#' then
               break;
 
-            calcSum:=calcSum+byte(c);
+            calcSum:=byte(calcSum+byte(c));
 
             c:=char(byte(c) xor $20);
           end;
@@ -348,13 +367,52 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
      'q':
         if pos('Supported', APacket) > 0 then
           Respond(fHandler.SupportedOptions)
+        else if pos('Xfer:memory-map:read', APacket) > 0 then  // qXfer:memory-map:read::0,18a
+          begin
+            delete(APacket, 1, pos('::', APacket)+1);
+            addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
+            val:=strtoint64('$'+APacket);
+            respond(fHandler.MemoryMap(addr, val));
+          end
         else
           exit(false);
      'R':
         begin
           fHandler.Reset;
         end;
-      'Z':     // Z0,9e,2
+
+     'v':
+        begin
+          if pos('FlashErase', APacket) > 0 then
+          begin
+            delete(APacket, 1, pos(':', APacket));
+            addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
+            len:= StrToInt64('$'+APacket);
+            fHandler.eraseFlash(addr, len);
+            Respond('OK')
+          end
+          else if pos('FlashWrite', APacket) > 0 then
+          begin
+            // ‘vFlashWrite:addr:XX...’
+            delete(APacket, 1, pos(':', APacket));
+            addr:=strtoint64('$'+Copy2SymbDel(APacket,':'));
+            setlength(buffer, length(APacket));
+
+            for i := 1 to length(APacket) do
+              buffer[i-1] := ord(APacket[i]);
+
+            if fHandler.Write(buffer[0], addr, length(buffer)) then
+              Respond('OK')
+            else
+              Respond('E00');
+          end
+          else if pos('FlashDone', APacket) > 0 then
+            Respond('OK')
+          else
+            exit(false);
+        end;
+
+        'Z':     // Z0,9e,2
         begin
           delete(APacket,1,1);
           if pos(':',APacket)>0 then

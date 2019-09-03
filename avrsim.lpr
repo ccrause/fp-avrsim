@@ -58,6 +58,7 @@ type
   private
     fAVR: TAvr;
     fRunner: TAVRRunner;
+    fMemoryMap: string;
 
     function ReadByte(AAddr: longword): byte;
     procedure WriteByte(AAddr: longword; val: byte);
@@ -79,6 +80,8 @@ type
     procedure SetBreakHit(AEvent: TBreakNotify);
     function SupportedOptions: string;
     function BreakpointHit: boolean;
+    function memoryMap(offset, len: dword): string;
+    procedure eraseFlash(addr, len: dword);
     constructor Create;
     destructor Destroy; override;
 
@@ -392,12 +395,30 @@ var
 
   function TDebugAVR.SupportedOptions: string;
   begin
-    result := 'hwbreak+;swbreak+;';
+    result := 'hwbreak+;swbreak+;qXfer:memory-map:read+';
   end;
 
   function TDebugAVR.BreakpointHit: boolean;
   begin
     result := fRunner.fState = rsBreak;
+  end;
+
+  function TDebugAVR.memoryMap(offset, len: dword): string;
+  begin
+    // If requested length < memory map size, prepend "m", else "l"
+    if (offset + len) < length(FMemoryMap) then
+      result := 'm' + copy(FMemoryMap, 1+offset, len)
+    else
+      result := 'l' + copy(FMemoryMap, 1+offset, len);
+  end;
+
+  procedure TDebugAVR.eraseFlash(addr, len: dword);
+  var
+    buf: TBytes;
+  begin
+    SetLength(buf, len);
+    FillChar(buf[0], length(buf), $FF);
+    fAVR.WriteFlash(buf[0], length(buf), addr);
   end;
 
   constructor TDebugAVR.Create;
@@ -408,6 +429,11 @@ var
 
       fRunner := TAVRRunner.Create(fAVR);
       TBreakableAVR(fAVR).Runner:=fRunner;
+
+      // Assume avrsim type layout - 32 registers & 224 IO registers, so first RAM address starts at $800100
+      FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
+                      [256 + fAVR.ramSize, fAVR.flashSize]);
+
       fRunner.DoBreak;
       fRunner.Start;
     end;
