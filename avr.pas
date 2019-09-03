@@ -1442,7 +1442,7 @@ begin
       begin
          // RJMP 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
-         o := smallint(opcode and $fff);
+         o := smallint((word(opcode) shl 4) and $ffff) div 16;
          //fState('rjmp .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
          new_pc := (new_pc + (o shl 1)) and fPCMask;
          Inc(cycle);
@@ -1451,7 +1451,7 @@ begin
       begin
          // RCALL 1100 kkkk kkkk kkkk
          // int16_t o := ((int16_t)(opcode shl 4)) shr 4; // CLANG BUGnot
-         o := smallint(opcode and $fff);
+         o := smallint((word(opcode) shl 4) and $ffff) div 16;
          //fState('rcall .%d [%06x]\n', o, (new_pc + (o shl 1)) and fPCMask);
          if fPCMask=$ffff then
            Push16(new_pc shr 1)
