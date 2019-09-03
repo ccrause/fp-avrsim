@@ -1062,7 +1062,7 @@ begin
                         if (op = 1) then
                            Inc(x);
                         SetReg(R_XH, x shr 8);
-                        SetReg(R_XL, x);
+                        SetReg(R_XL, byte(x));
                      end;
                      $920c,
                      $920d,
@@ -1095,7 +1095,7 @@ begin
                         if (op = 1) then
                            Inc(y);
                         SetReg(R_YH, y shr 8);
-                        SetReg(R_YL, y);
+                        SetReg(R_YL, byte(y));
                      end;
                      $9209,
                      $920a:
@@ -1111,7 +1111,7 @@ begin
                         if (op = 1) then
                            Inc(y);
                         SetReg(R_YH, y shr 8);
-                        SetReg(R_YL, y);
+                        SetReg(R_YL, byte(y));
                      end;
                      $9200:
                      begin // STS not  Store Direct to fData Space, 32 bits
