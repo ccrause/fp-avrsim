@@ -485,7 +485,10 @@ begin
   begin
     result := #0;
     if fHandler.DoHalt then
+    begin
+      WriteLn('Simulation exited...');
       DoExit;
+    end;
   end;
 end;
 

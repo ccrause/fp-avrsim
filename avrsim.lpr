@@ -546,6 +546,7 @@ begin
             fserv.Waitfor;
 
             ExitCode := fHandler.AVR.ExitCode;
+            WriteLn('Exit code: ', ExitCode);
           finally
             fserv.Free;
           end;
