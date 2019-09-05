@@ -19,17 +19,23 @@ type
 
   TAVRRunner = class;
 
+  { TBreakableAVR }
+
   TBreakableAVR = class(TAVR)
   private
     FOnBreak: TBreakNotify;
+    FOnHalt: TBreakNotify;
     fRunner: TAVRRunner;
   protected
+    // reverse communication channel to gdb server
     procedure BreakHit; override;
+    procedure SignalHalt;
   public
     constructor Create();
 
     property Runner: TAVRRunner read fRunner write fRunner;
     property OnBreak: TBreakNotify read FOnBreak write FOnBreak;
+    property OnHalt: TBreakNotify read FOnHalt write FOnHalt;
   end;
 
   TAVRRunner = class(TThread)
@@ -77,9 +83,14 @@ type
     procedure StepCycles(ACycles: longint);
     function Write(const ABuffer; AAddr, ALen: int64): boolean;
     function WriteReg(AAddr, AVal: int64): boolean;
+
+    // Reverse communication with gdb server
     procedure SetBreakHit(AEvent: TBreakNotify);
+    procedure SetHaltProc(AEvent: TBreakNotify);
+
     function SupportedOptions: string;
     function BreakpointHit: boolean;
+    function DoHalt: boolean;
     function memoryMap(offset, len: dword): string;
     procedure eraseFlash(addr, len: dword);
     constructor Create;
@@ -103,6 +114,12 @@ var
       fRunner.DoBreak;
       if assigned(OnBreak) then
         OnBreak;
+    end;
+
+  procedure TBreakableAVR.SignalHalt;
+    begin
+      if Assigned(FOnHalt) then
+        OnHalt;
     end;
 
   constructor TBreakableAVR.Create();
@@ -136,6 +153,8 @@ var
             else
               dec(i);
           end;
+          if fAvr.DoExit then
+            TBreakableAVR(fAvr).SignalHalt;
         end;
         fLock.Leave;
       end;
@@ -229,10 +248,12 @@ var
 
   procedure TDebugAVR.WriteByte(AAddr: longword; val: byte);
     begin
-      if AAddr >= VMA_RAM then
+      if (AAddr <= $FFFF) then
+        fAVR.Flash[AAddr-VMA_FLASH]:=val
+      else if (AAddr > VMA_RAM) and (AAddr < (VMA_RAM + $FFFF)) then
         fAVR.RAM[AAddr-VMA_RAM]:=val
-      else if AAddr >= VMA_FLASH then
-        fAVR.Flash[AAddr-VMA_FLASH]:=val;
+      else
+        WriteLn('Writing byte beyond RAM');
     end;
 
   function TDebugAVR.Continue: TStopReply;
@@ -393,14 +414,24 @@ var
       TBreakableAVR(fAVR).OnBreak:=AEvent;
     end;
 
+  procedure TDebugAVR.SetHaltProc(AEvent: TBreakNotify);
+    begin
+      TBreakableAVR(fAVR).OnHalt:=AEvent;
+    end;
+
   function TDebugAVR.SupportedOptions: string;
   begin
-    result := 'hwbreak+;swbreak+;qXfer:memory-map:read+';
+    result := 'hwbreak+;swbreak+;qXfer:memory-map:read+;PacketSize=256;';
   end;
 
   function TDebugAVR.BreakpointHit: boolean;
   begin
     result := fRunner.fState = rsBreak;
+  end;
+
+  function TDebugAVR.DoHalt: boolean;
+  begin
+    result := fAVR.DoExit;
   end;
 
   function TDebugAVR.memoryMap(offset, len: dword): string;
@@ -431,7 +462,7 @@ var
       TBreakableAVR(fAVR).Runner:=fRunner;
 
       // Assume avrsim type layout - 32 registers & 224 IO registers, so first RAM address starts at $800100
-      FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x40</property> </memory></memory-map>',
+      FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x100</property> </memory></memory-map>',
                       [256 + fAVR.ramSize, fAVR.flashSize]);
 
       fRunner.DoBreak;

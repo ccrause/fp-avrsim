@@ -34,6 +34,7 @@ type
     function GetRegisterString: string;
 
     procedure SetBreakHit(AEvent: TBreakNotify);
+    procedure SetHaltProc(AEvent: TBreakNotify);
 
     function SupportedOptions: string;
 
@@ -43,6 +44,7 @@ type
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
 
     function BreakpointHit: boolean;
+    function DoHalt: boolean;
     function MemoryMap(offset, len: dword): string;
     procedure eraseFlash(addr, len: dword);
   end;
@@ -66,6 +68,8 @@ type
     procedure Respond(ATyp: TStopReply);
 
     function HandlePacket(APacket: string): boolean;
+
+    function fTcpReadChar: char;
   protected
     procedure Execute; override;
   public
@@ -93,7 +97,11 @@ type
 
 implementation
 
-uses sockets;
+uses
+  {$IFNDEF WINDOWS}BaseUnix, sockets;
+  {$ELSE}winsock2, windows;
+  {$ENDIF}
+
 
 var
   debugPrint: boolean = true;
@@ -141,7 +149,7 @@ procedure TGDBServer.ReadPacket;
     s: String;
   begin
     repeat
-      c:=char(fReadBuffer.ReadByte);
+      c := fTcpReadChar;
 
       if c=#$3 then
         begin
@@ -154,7 +162,7 @@ procedure TGDBServer.ReadPacket;
 
     if terminated then exit;
 
-    c:=char(fReadBuffer.ReadByte);
+    c:= fTcpReadChar;
     s:='';
     calcSum:=0;
     while c<>'#' do
@@ -163,7 +171,7 @@ procedure TGDBServer.ReadPacket;
 
         if c=#$7D then
           begin
-            c:=char(fReadBuffer.ReadByte);
+            c:= fTcpReadChar;
 
             // Something weird happened
             if c='#' then
@@ -175,10 +183,10 @@ procedure TGDBServer.ReadPacket;
           end;
 
         s:=s+c;
-        c:=char(fReadBuffer.ReadByte);
+        c:=fTcpReadChar;
       end;
     dbgPrintLn('-> ' + s);
-    cksum:=strtoint('$'+char(fReadBuffer.ReadByte)+char(fReadBuffer.ReadByte));
+    cksum:=strtoint('$'+char(fTcpReadChar)+char(fTcpReadChar));
 
     if calcSum=cksum then
       begin
@@ -445,6 +453,42 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
     end;
   end;
 
+function TGDBServer.fTcpReadChar: char;
+{$if defined(unix) or defined(windows)}
+var
+  FDS: TFDSet;
+  TimeV: TTimeVal;
+  dataAvailable: boolean;
+{$endif}
+begin
+  Result:=#0;
+{$if defined(unix) or defined(windows)}
+  TimeV.tv_usec := 1 * 1000;  // 1 msec
+  TimeV.tv_sec := 0;
+{$endif}
+{$ifdef unix}
+  FDS := Default(TFDSet);
+  fpFD_Zero(FDS);
+  fpFD_Set(self.fSock.Handle, FDS);
+  dataAvailable := fpSelect(self.fSock.Handle + 1, @FDS, nil, nil, @TimeV) > 0;
+{$else}
+{$ifdef windows}
+  FDS := Default(TFDSet);
+  FD_Zero(FDS);
+  FD_Set(self.fSock.Handle, FDS);
+  dataAvailable := Select(self.fSock.Handle + 1, @FDS, nil, nil, @TimeV) > 0;
+{$endif}
+{$endif}
+  if dataAvailable then
+    result := char(fReadBuffer.ReadByte)
+  else
+  begin
+    result := #0;
+    if fHandler.DoHalt then
+      DoExit;
+  end;
+end;
+
 procedure TGDBServer.Execute;
   var
     newBreak: boolean;
@@ -487,6 +531,7 @@ constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; 
     fReadBuffer:=fSock;//TReadBufStream.Create(fSock);
     fOldBreak := false;
     fHandler.SetBreakHit(@BreakHit);
+    fHandler.SetHaltProc(@DoExit);
 
     inherited Create(false);
   end;
