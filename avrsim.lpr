@@ -484,13 +484,13 @@ var
 var
   Filename : String;
   RunInDebugger,
-  SimulateAVR6 : Boolean;
+  SimulateAVR6, Verbose: Boolean;
   i : Integer;
 
 procedure InvalidCommandline;
   begin
     writeln('Simulator: Invalid command line');
-    writeln('Usage: avrsim [-d<port>] [-6] <bin-file>');
+    writeln('Usage: avrsim [-d<port>] [-6] [-v] <bin-file>');
     halt(-100001);
   end;
 
@@ -507,6 +507,8 @@ begin
         end;
       '-6':
         SimulateAVR6:=true;
+      '-v':
+        Verbose:=true;
       else
         begin
           if i=Paramcount then
@@ -546,7 +548,8 @@ begin
             fserv.Waitfor;
 
             ExitCode := fHandler.AVR.ExitCode;
-            WriteLn('Exit code: ', ExitCode);
+            if Verbose then
+              WriteLn('Exit code: ', ExitCode);
           finally
             fserv.Free;
           end;
