@@ -548,8 +548,7 @@ begin
             fserv.Waitfor;
 
             ExitCode := fHandler.AVR.ExitCode;
-            if Verbose then
-              WriteLn('Exit code: ', ExitCode);
+            WriteLn('Exit code: ', ExitCode);
           finally
             fserv.Free;
           end;
@@ -570,6 +569,9 @@ begin
              x.Step(10);
 
           ExitCode := x.ExitCode;
+          if Verbose then
+            WriteLn('Exit code: ', ExitCode);
+
         finally
           x.Free;
         end;
