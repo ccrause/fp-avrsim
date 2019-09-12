@@ -704,7 +704,7 @@ begin
             $1c00:
             begin // ADD with carry 0001 11 rd dddd rrrr
                get_r_d_10(opcode, r, d, vd, vr);
-               res := vd + vr + ord(fSREG[S_C]);
+               res := byte(vd + vr + ord(fSREG[S_C]));
                if (r = d) then
                begin
                   //fState('rol %s[%02x] := %02x\n', avr_regname(d), fData[d], res);
@@ -1099,7 +1099,7 @@ begin
                         SetReg(r, GetRAM(y));
                         if (op = 1) then
                            Inc(y);
-                        SetReg(R_YH, y shr 8);
+                        SetReg(R_YH, byte(y shr 8));
                         SetReg(R_YL, byte(y));
                      end;
                      $9209,
@@ -1115,7 +1115,7 @@ begin
                         SetRAM(y, fData[r]);
                         if (op = 1) then
                            Inc(y);
-                        SetReg(R_YH, y shr 8);
+                        SetReg(R_YH, byte(y shr 8));
                         SetReg(R_YL, byte(y));
                      end;
                      $9200:
@@ -1141,7 +1141,7 @@ begin
                         SetReg(r, GetRAM(z));
                         if (op = 1) then
                            Inc(z);
-                        SetReg(R_ZH, z shr 8);
+                        SetReg(R_ZH, byte(z shr 8));
                         SetReg(R_ZL, byte(z));
                      end;
                      $9201,
@@ -1405,7 +1405,7 @@ begin
                                  $9c00:
                                  begin // MUL - Multiply Unsigned 1001 11rd dddd rrrr
                                     get_r_d_10(opcode, r, d, vd, vr);
-                                    res16 := vd * vr;
+                                    res16 := smallint(vd * vr);
                                     //fState('mul %s[%02x], %s[%02x] := %04x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                                     Inc(cycle);
                                     SetReg(0, byte(res16));
