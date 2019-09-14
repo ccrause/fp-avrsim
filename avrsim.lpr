@@ -140,7 +140,6 @@ var
           begin
             tmpState := rsWatchBreak;
             fAvr.clearDataWatchBreak;
-            //TBreakableAVR(fAvr).Notify;
           end
           else
           begin
@@ -149,7 +148,6 @@ var
             begin
               if fBreakpoints[i] = fAvr.PC then
               begin
-                //TBreakableAVR(fAvr).Notify;
                 i := -1;
                 tmpState := rsBreak;
               end
@@ -161,7 +159,6 @@ var
           if fAvr.DoExit then
           begin
             tmpState := rsBreak;
-            //TBreakableAVR(fAvr).Notify;
           end;
 
           if tmpState <> rsRunning then
