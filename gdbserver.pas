@@ -10,39 +10,31 @@ uses
 type
   TGDBServerListener = class;
 
-  TBreakpointType = (btMemBreak,btHWBreak, btWWatch, btRWatch, btAWatch);
+  TBreakpointType = (btMemBreak, btHWBreak, btWWatch, btRWatch, btAWatch);
   TStopReply = (srOK, srSigInt, srBreakPoint);
 
-  TBreakNotify = procedure of object;
+  TNotification = procedure of object;
 
   IGDBHandler = interface
     function GetStatus: TStopReply;
     function GetStatusStr: string;
     function Continue: TStopReply;
     function SingleStep: TStopReply;
-
     procedure DoBreak;
-
     procedure StepCycles(ACycles: longint);
 
     function Read(var ABuffer; AAddr,ALen: int64): boolean;
     function Write(const ABuffer; AAddr,ALen: int64): boolean;
-
     function ReadReg(AAddr: int64; var AVal: int64): boolean;
     function WriteReg(AAddr, AVal: int64): boolean;
-
     function GetRegisterString: string;
 
-    procedure SetBreakHit(AEvent: TBreakNotify);
-    procedure SetHaltProc(AEvent: TBreakNotify);
-
+    procedure SendNotification(AEvent: TNotification);
     function SupportedOptions: string;
 
     procedure Reset;
-
     procedure SetBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
-
     function BreakpointHit: boolean;
     function DoHalt: boolean;
     function MemoryMap(offset, len: dword): string;
@@ -57,8 +49,10 @@ type
     fReadBuffer: TStream;
     fHandler: IGDBHandler;
     fSock: TSocketStream;
-    fOldBreak: boolean;
+    fNewNotification: boolean;
+    fRunning: boolean;
 
+    procedure fNotifyEvent;
     procedure BreakHit;
     procedure ReadPacket;
 
@@ -149,6 +143,8 @@ procedure TGDBServer.ReadPacket;
     s: String;
   begin
     repeat
+      // Check if handler needs servicing before new TCP data request starts
+      if fNewNotification then exit;
       c := fTcpReadChar;
 
       if c=#$3 then
@@ -156,7 +152,6 @@ procedure TGDBServer.ReadPacket;
           dbgPrintLn('-> <Ctrl-C>');
           fHandler.DoBreak;
           Respond(fHandler.GetStatusStr);
-          fOldBreak := true;  // prevent additional break notifications
         end;
     until (c='$') or terminated;
 
@@ -278,6 +273,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'c':
         begin
           fHandler.Continue;
+          fRunning := true;
         end;
       's':
         begin
@@ -482,30 +478,31 @@ begin
   if dataAvailable then
     result := char(fReadBuffer.ReadByte)
   else
-  begin
     result := #0;
-    if fHandler.DoHalt then
-    begin
-      WriteLn('Simulation exited...');
-      DoExit;
-    end;
-  end;
 end;
 
 procedure TGDBServer.Execute;
-  var
-    newBreak: boolean;
   begin
-    fOldBreak := fHandler.BreakpointHit;  // Start in rsBreak state by default.  No need to send this through since gdb starts with a status request (?)
+    fRunning := false;  // sim starts paused
+    fNewNotification := false; // no new break notifications
     while not terminated do
       begin
         ReadPacket;
-        newBreak := fHandler.BreakpointHit;
-        if newBreak and not fOldBreak then
+        if fRunning and fNewNotification then
         begin
-          BreakHit;
+          if fHandler.DoHalt then
+          begin
+            WriteLn('Simulation exited...');
+            DoExit;
+            fRunning := false;
+          end
+          else if fHandler.BreakpointHit then
+          begin
+            BreakHit;
+            fRunning := false;
+          end;
+          fNewNotification := false;
         end;
-        fOldBreak := newBreak;
       end;
     fSock.Free;
     fOwner.Terminate;
@@ -521,6 +518,11 @@ procedure TGDBServer.DoExit;
     tmp.Free;
   end;
 
+procedure TGDBServer.fNotifyEvent;
+begin
+  fNewNotification := true;
+end;
+
 procedure TGDBServer.BreakHit;
   begin
     Respond(fHandler.GetStatusStr);
@@ -532,9 +534,8 @@ constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; 
     fOwner:=AOwner;
     fSock:=ASock;
     fReadBuffer:=fSock;//TReadBufStream.Create(fSock);
-    fOldBreak := false;
-    fHandler.SetBreakHit(@BreakHit);
-    fHandler.SetHaltProc(@DoExit);
+    fNewNotification := false;
+    fHandler.SendNotification(@fNotifyEvent);
 
     inherited Create(false);
   end;

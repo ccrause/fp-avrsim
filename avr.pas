@@ -43,6 +43,14 @@ type
 
    TSregField = (S_C, S_Z, S_N, S_V, S_S, S_H, S_T, S_I);
 
+   TDataBreak = record
+     startAddress: longword;
+     range: longword;
+     watchType: byte;  // avoid pulling in gdbserver
+   end;
+   TDataBreakArray = array of TDataBreak;
+   PDataBreakArray = ^TDataBreakArray;
+
    { TAvr }
 
    TAvr = class
@@ -53,6 +61,14 @@ type
     fPCMask : TFlashAddr;
     fSREG: array[TSregField] of boolean;
     fState: TAvrState;
+
+    // Lists of memory access watch addresses
+    fReadDataWatchpoints: TDataBreakArray;
+    fWriteDataWatchpoints: TDataBreakArray;
+
+    fDataWatchBreak: boolean;
+    fDataWatchAddress: longword;
+    fDataWatchType: byte;
 
     fRAMPZ, fEIND: word;
 
@@ -115,6 +131,10 @@ type
     procedure WriteFlash(const Data; Count, Offset: longint);
     procedure LoadFlashBinary(const AFilename: string);
 
+    procedure addDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
+    procedure removeDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
+    procedure clearDataWatchBreak;
+
     constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024;AVR6 : Boolean = false);
 
     property RAM[AIndex: longint]: byte read GetData write SetData;
@@ -130,6 +150,10 @@ type
     property AVR6: boolean read GetAVR6 write SetAVR6;
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
+
+    property DataWatchBreak: boolean read fDataWatchBreak;
+    property DataWatchAddress: longword read fDataWatchAddress;
+    property DataWatchType: byte read fDataWatchType;
    end;
 
 const
@@ -222,13 +246,49 @@ begin
 end;
 
 procedure TAvr.avr_core_watch_write(r: word; v: byte);
+var
+  i: integer;
 begin
    fData[r] := v;
+
+   if length(fWriteDataWatchpoints) > 0 then
+   begin
+     i := 0;
+     while (i < length(fWriteDataWatchpoints)) and
+           ((r < fWriteDataWatchpoints[i].startAddress) or
+            (r >= (fWriteDataWatchpoints[i].startAddress + fWriteDataWatchpoints[i].range))) do
+       inc(i);
+
+     if i < length(fWriteDataWatchpoints) then
+     begin
+       fDataWatchBreak := true;
+       fDataWatchAddress := r;
+       fDataWatchType := fWriteDataWatchpoints[i].watchType;
+     end;
+   end;
 end;
 
 function TAvr.avr_core_watch_read(r: word): byte;
+var
+  i: integer;
 begin
    result := fData[r];
+
+   if length(fReadDataWatchpoints) > 0 then
+   begin
+     i := 0;
+     while (i < length(fReadDataWatchpoints)) and
+           ((r < fReadDataWatchpoints[i].startAddress) or
+            (r >= (fReadDataWatchpoints[i].startAddress + fReadDataWatchpoints[i].range))) do
+       inc(i);
+
+     if i < length(fReadDataWatchpoints) then
+     begin
+       fDataWatchBreak := true;
+       fDataWatchAddress := r;
+       fDataWatchType := fReadDataWatchpoints[i].watchType;
+     end;
+   end;
 end;
 
 function TAvr.GetIO(r: word; var v: byte): boolean;
@@ -1611,6 +1671,76 @@ begin
 
       CloseFile(fil);
    end;
+end;
+
+procedure TAvr.addDataWatch(AAddr, ARange: longword; readBreak: boolean;
+  watchType: byte);
+var
+  i: integer;
+  found: boolean;
+  watchpoints: PDataBreakArray;
+begin
+  if readBreak then
+    watchpoints := @fReadDataWatchpoints
+  else
+    watchpoints := @fWriteDataWatchpoints;
+
+  i := 0;
+  found := false;
+  while (i < length(watchpoints^)) and not found do
+  begin
+    found := (watchpoints^[i].startAddress = AAddr) and
+             (watchpoints^[i].range = ARange);
+    inc(i);
+  end;
+
+  if not found then
+  begin
+    SetLength(watchpoints^, length(watchpoints^)+1);
+    watchpoints^[length(watchpoints^)-1].startAddress := AAddr;
+    watchpoints^[length(watchpoints^)-1].range := ARange;
+    watchpoints^[length(watchpoints^)-1].watchType := watchType;
+  end;
+end;
+
+procedure TAvr.removeDataWatch(AAddr, ARange: longword; readBreak: boolean;
+  watchType: byte);
+var
+  i: integer;
+  found: boolean;
+  watchpoints: PDataBreakArray;
+begin
+  if readBreak then
+    watchpoints := @fReadDataWatchpoints
+  else
+    watchpoints := @fWriteDataWatchpoints;
+
+  i := 0;
+  found := false;
+  while (i < length(watchpoints^)) and not found do
+  begin
+    found := (watchpoints^[i].startAddress = AAddr) and
+             (watchpoints^[i].range = ARange);
+    inc(i);
+    // i now points to after the found item
+  end;
+
+  if found then
+  begin
+    while (i > 0) and (i < length(watchpoints^)) do
+    begin
+      watchpoints^[i-1].startAddress := watchpoints^[i].startAddress;
+      watchpoints^[i-1].range := watchpoints^[i].range;
+      watchpoints^[i-1].watchType := watchpoints^[i].watchType;
+      inc(i);
+    end;
+    SetLength(watchpoints^, length(watchpoints^)-1);
+  end;
+end;
+
+procedure TAvr.clearDataWatchBreak;
+begin
+  fDataWatchBreak := false;
 end;
 
 constructor TAvr.Create(AFlashSize : longint; ARamSize : longint; AVR6 : Boolean);
