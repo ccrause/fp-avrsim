@@ -992,8 +992,15 @@ begin
                end;
                $95e8:
                begin // SPM
-                  //fState('spm\n');
                   SPM;
+               end;
+               $95f8:
+               begin // SPM Z+
+                  SPM;
+                  z := fData[R_ZL] or (fData[R_ZH] shl 8);
+                  Inc(z);
+                  SetReg(R_ZH, z shr 8);
+                  SetReg(R_ZL, byte(z));
                end;
                $9409, // IJMP Indirect jump 1001 0100 0000 1001
                $9419, // EIJMP Indirect jump 1001 0100 0001 1001 bit 4 is 'indirect'
