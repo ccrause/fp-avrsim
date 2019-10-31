@@ -402,8 +402,25 @@ var
 
   function TDebugAVR.ReadReg(AAddr: int64; var AVal: int64): boolean;
     begin
-      //AVal:=fAVR.get;
-      result:=false;
+      result := true;
+      if (AAddr > 0) and (AAddr < 32) then // CPU registers
+        AVal := fAVR.RAM[AAddr]
+      else if AAddr = 32 then              // SREG
+        AVal := fAVR.SREG
+      else if AAddr = 33 then              // SPL
+        AVal := byte(fAVR.StackPointer and $0F)
+      else if AAddr = 34 then              // SPH
+        AVal := byte(fAVR.StackPointer shr 8)
+      else if AAddr = 35 then             // PC0
+        AVal := byte(fAVR.PC and $0F)
+      else if AAddr = 36 then             // PC1
+        AVal := byte(fAVR.PC shr 8)
+      else if AAddr = 37 then             // PC2
+        AVal := byte(fAVR.PC shr 16)
+      else if AAddr = 38 then             // PC3
+        AVal := byte(fAVR.PC shr 24)
+      else
+        result := false;
     end;
 
   procedure TDebugAVR.RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
@@ -454,8 +471,52 @@ var
     end;
 
   function TDebugAVR.WriteReg(AAddr, AVal: int64): boolean;
+    var
+      tmp: qword;
     begin
-      result:=false;
+      result := true;
+      if (AAddr > 0) and (AAddr < 32) then // CPU registers
+        fAVR.RAM[AAddr] := byte(AVal)
+      else if AAddr = 32 then              // SREG
+        fAVR.SREG := byte(AVal)
+      else if AAddr = 33 then              // SPL, only modify low byte of SP
+      begin
+        tmp := fAVR.StackPointer;
+        tmp := (tmp and $FF00) + byte(AVal);
+        fAVR.StackPointer := tmp;
+      end
+      else if AAddr = 34 then              // SPH
+      begin
+        tmp := fAVR.StackPointer;
+        tmp := (tmp and $00FF) + (byte(AVal) shl 8);
+        fAVR.StackPointer := tmp;
+      end
+      else if AAddr = 35 then             // PC0
+      begin
+        tmp := fAVR.PC;
+        tmp := (tmp and $FFFFFF00) + byte(AVal);
+        fAVR.PC := tmp;
+      end
+      else if AAddr = 36 then             // PC1
+      begin
+        tmp := fAVR.PC;
+        tmp := (tmp and $FFFF00FF) + (byte(AVal) shl 8);
+        fAVR.PC := tmp;
+      end
+      else if AAddr = 37 then             // PC2
+      begin
+        tmp := fAVR.PC;
+        tmp := (tmp and $FF00FFFF) + (byte(AVal) shl 16);
+        fAVR.PC := tmp;
+      end
+      else if AAddr = 38 then             // PC3
+      begin
+        tmp := fAVR.PC;
+        tmp := (tmp and $00FFFFFF) + (byte(AVal) shl 24);
+        fAVR.PC := tmp;
+      end
+      else
+        result := false;
     end;
 
   procedure TDebugAVR.SendNotification(AEvent: TNotification);
