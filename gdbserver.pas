@@ -320,7 +320,10 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'D', 'k':
         begin
           if APacket[1] = 'D' then
-            dbgPrintLn('Client detached - terminating.')
+          begin
+            dbgPrintLn('Client detached - terminating.');
+            Respond('OK');
+          end
           else
             dbgPrintLn('Client killed program - terminating.');
           Terminate;
