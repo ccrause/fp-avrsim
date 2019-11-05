@@ -189,7 +189,6 @@ procedure TGDBServer.ReadPacket;
         if not HandlePacket(s) then
         begin
           Respond('');
-          dbgPrintLn('<- ''''');
         end;
       end
     else
