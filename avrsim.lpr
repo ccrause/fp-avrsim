@@ -412,7 +412,7 @@ var
       else if AAddr = 34 then              // SPH
         AVal := byte(fAVR.StackPointer shr 8)
       else if AAddr = 35 then             // PC0
-        AVal := byte(fAVR.PC and $0F)
+        AVal := byte(fAVR.PC and $FF)
       else if AAddr = 36 then             // PC1
         AVal := byte(fAVR.PC shr 8)
       else if AAddr = 37 then             // PC2
