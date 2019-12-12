@@ -408,7 +408,7 @@ var
       else if AAddr = 32 then              // SREG
         AVal := fAVR.SREG
       else if AAddr = 33 then              // SPL
-        AVal := byte(fAVR.StackPointer and $0F)
+        AVal := byte(fAVR.StackPointer and $FF)
       else if AAddr = 34 then              // SPH
         AVal := byte(fAVR.StackPointer shr 8)
       else if AAddr = 35 then             // PC0
