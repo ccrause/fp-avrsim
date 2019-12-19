@@ -355,7 +355,7 @@ var
     result := 'T05';
     old := fRunner.DoBreak;
     if old = rsBreak then
-      result := result + 'hwbreak'
+      result := result + 'hwbreak:;'
     else if old = rsWatchBreak then
     begin
       case TBreakpointType(fAVR.DataWatchType) of
