@@ -57,6 +57,7 @@ type
     procedure Continue;
 
     constructor Create(AAvr: TAvr);
+    destructor Destroy; override;
   end;
 
   { TDebugAVR }
@@ -274,6 +275,12 @@ var
 
       fLock := TCriticalSection.Create;
     end;
+
+  destructor TAVRRunner.Destroy;
+  begin
+    fLock.Free;
+    inherited;
+  end;
 
   function TDebugAVR.ReadByte(AAddr: longword): byte;
     begin

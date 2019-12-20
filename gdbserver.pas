@@ -5,7 +5,7 @@ unit gdbserver;
 interface
 
 uses
-  Classes, bufstream, SysUtils, strutils, ssockets;
+  Classes, SysUtils, strutils, ssockets;
 
 type
   TGDBServerListener = class;
@@ -603,7 +603,7 @@ destructor TGDBServerListener.Destroy;
     i: longint;
   begin
     Terminate;
-    fServer.StopAccepting;
+    //fServer.StopAccepting;
     WaitFor;
 
     for i := fClients.count-1 downto 0 do
@@ -613,6 +613,7 @@ destructor TGDBServerListener.Destroy;
         cl.WaitFor;
         cl.free;
       end;
+    fClients.Free;
 
     inherited Destroy;
   end;
