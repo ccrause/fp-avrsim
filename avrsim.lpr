@@ -414,18 +414,12 @@ var
         AVal := fAVR.RAM[AAddr]
       else if AAddr = 32 then              // SREG
         AVal := fAVR.SREG
-      else if AAddr = 33 then              // SPL
-        AVal := byte(fAVR.StackPointer and $FF)
-      else if AAddr = 34 then              // SPH
-        AVal := byte(fAVR.StackPointer shr 8)
-      else if AAddr = 35 then             // PC0
-        AVal := byte(fAVR.PC and $FF)
-      else if AAddr = 36 then             // PC1
-        AVal := byte(fAVR.PC shr 8)
-      else if AAddr = 37 then             // PC2
-        AVal := byte(fAVR.PC shr 16)
-      else if AAddr = 38 then             // PC3
-        AVal := byte(fAVR.PC shr 24)
+      // Anything larger than a byte is swapped to big endian
+      // so that the resulting IntToHex conversion will give a little endian hex string
+      else if AAddr = 33 then              // SP
+        AVal := NtoBE(fAVR.StackPointer)
+      else if AAddr = 34 then              // PC
+        AVal := NtoBE(fAVR.PC)
       else
         result := false;
     end;
