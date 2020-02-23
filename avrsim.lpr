@@ -287,7 +287,7 @@ var
       // Assume $800000+ indicates RAM/IOREGs
       if (AAddr <= $FFFF) then
         result := fAVR.Flash[AAddr]
-      else if (AAddr > VMA_RAM) and (AAddr < (VMA_RAM + $FFFF)) then
+      else if (AAddr >= VMA_RAM) and (AAddr <= (VMA_RAM + $FFFF)) then
         result := fAVR.RAM[(AAddr-VMA_RAM)]
       else
         result:=0;
