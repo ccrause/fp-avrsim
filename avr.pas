@@ -76,6 +76,7 @@ type
     fExitCode: byte;
 
     StopOnJmpCallToZero : boolean;
+    fSRamStart: word;
 
     function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
@@ -150,6 +151,7 @@ type
     property AVR6: boolean read GetAVR6 write SetAVR6;
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
+    property ramStart: word read fSRamStart write fSRamStart;
 
     property DataWatchBreak: boolean read fDataWatchBreak;
     property DataWatchAddress: longword read fDataWatchAddress;
@@ -357,7 +359,7 @@ end;
  }
 procedure TAvr.SetRAM(addr: word; v: byte);
 begin
-   if (addr < 256) then
+   if (addr < fSRamStart) then
       SetReg(addr, v)
    else
       avr_core_watch_write(addr, v);
@@ -378,7 +380,7 @@ begin
        }
       ReadSREG(fData[R_SREG]);
    end
-   else if ((addr > 31) and (addr < 256)) then
+   else if ((addr > 31) and (addr < fSRamStart)) then
    begin
       r:=0;
       if GetIO(addr, r) then
@@ -1765,6 +1767,8 @@ begin
      fPCMask:=$3fffff
    else
      fPCMask:=$ffff;
+
+   fSRamStart := $100;  // previous hardcoded value, change to specific MCU value
 end;
 
 end.

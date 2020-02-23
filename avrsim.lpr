@@ -592,17 +592,20 @@ var
   RunInDebugger,
   SimulateAVR6, Verbose: Boolean;
   i : Integer;
+  setRamStart: boolean;
+  RamStart: string;
 
 procedure InvalidCommandline;
   begin
     writeln('Simulator: Invalid command line');
-    writeln('Usage: avrsim [-d<port>] [-6] [-v] <bin-file>');
+    writeln('Usage: avrsim [-d<port>] [-6] [-v] [-s<startAddress>] <bin-file>');
     halt(-100001);
   end;
 
 begin
   RunInDebugger:=false;
   SimulateAVR6:=false;
+  setRamStart := false;
   for i:=1 to ParamCount do
     case Copy(ParamStr(i),1,2) of
       '-d':
@@ -615,6 +618,12 @@ begin
         SimulateAVR6:=true;
       '-v':
         Verbose:=true;
+      '-s':
+        begin
+          setRamStart := true;
+          RamStart := ParamStr(i);
+          delete(RamStart, 1, 2);
+        end
       else
         begin
           if i=Paramcount then
@@ -641,7 +650,8 @@ begin
     if RunInDebugger then
       begin
         fHandler:=TDebugAVR.Create;
-
+        if setRamStart then
+          fHandler.AVR.ramStart := StrToInt(RamStart);
         fHandler.AVR.AVR6:=SimulateAVR6;
 
         try
@@ -665,7 +675,8 @@ begin
     else
       begin
         x := TAvr.Create;
-
+        if setRamStart then
+          x.ramStart := StrToInt(RamStart);
         x.AVR6:=SimulateAVR6;
 
         try
