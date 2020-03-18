@@ -914,7 +914,7 @@ begin
          case (opcode and $d008) of
             $a000,
             $8000:
-            begin // LD (LDD) – Load Indirect using Z 10q0 qq0r rrrr 0qqq
+            begin // LD (LDD) or ST (STD) – Load/Store Indirect using Z 10q0 qq0r rrrr 0qqq
                v := fData[R_ZL] or (fData[R_ZH] shl 8);
                r := (opcode shr 4) and $1f;
                q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
@@ -932,7 +932,7 @@ begin
             end;
             $a008,
             $8008:
-            begin // LD (LDD) – Load Indirect using Y 10q0 qq0r rrrr 1qqq
+            begin // LD (LDD) or ST (STD) – Load Indirect using Y 10q0 qq0r rrrr 1qqq
                v := fData[R_YL] or (fData[R_YH] shl 8);
                r := (opcode shr 4) and $1f;
                q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
