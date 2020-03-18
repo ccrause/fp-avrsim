@@ -1575,44 +1575,59 @@ begin
             $f800,
             $f900:
             begin // BLD – Bit Store from T into a Bit in Register 1111 100r rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               if fSREG[s_t] then
-                  v := (fData[r] and (not (1 shl s))) or (1 shl s)
+               if opcode and 8 = 0 then
+               begin
+                  r := (opcode shr 4) and $1f; // register index
+                  s := opcode and 7;
+                  if fSREG[s_t] then
+                     v := (fData[r] and (not (1 shl s))) or (1 shl s)
+                  else
+                     v := (fData[r] and (not (1 shl s))) or 0;
+                  //fState('bld %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], 1 shl s, v);
+                  SetReg(r, v);
+               end
                else
-                  v := (fData[r] and (not (1 shl s))) or 0;
-               //fState('bld %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], 1 shl s, v);
-               SetReg(r, v);
+                  InvalidOpcode();
             end;
             $fa00,
             $fb00:
             begin // BST – Bit Store into T from bit in Register 1111 100r rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               //fState('bst %s[%02x], $%02x\n', avr_regname(r), fData[r], 1 shl s);
-               fSREG[S_T] := odd(fData[r] shr s);
+               if opcode and 8 = 0 then
+               begin
+                  r := (opcode shr 4) and $1f; // register index
+                  s := opcode and 7;
+                  //fState('bst %s[%02x], $%02x\n', avr_regname(r), fData[r], 1 shl s);
+                  fSREG[S_T] := odd(fData[r] shr s);
+               end
+               else
+                  InvalidOpcode();
             end;
             $fc00,
             $fe00:
             begin // SBRS/SBRC – Skip if Bit in Register is Set/Clear 1111 11sr rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               _set := (opcode and $0200) <> 0;
-               branch := (((fData[r] and (1 shl s)) <> 0) and _set) or ((not ((fData[r] and (1 shl s)) <> 0)) and (not _set));
-               //fState('%s %s[%02x], $%02x\t; Will%s branch\n', _set ? 'sbrs' : 'sbrc', avr_regname(r), fData[r], 1 shl s, branch ? '':' not');
-               if (branch) then
+               if opcode and 8 = 0 then
                begin
-                  if (Is32bitInstr(new_pc)) then
-                  begin
-                     new_pc := (new_pc + 4) and fPCMask;
-                     Inc(cycle, 2);
-                  end
-                  else
-                  begin
-                     new_pc := (new_pc + 2) and fPCMask;
-                     Inc(cycle);
-                  end;
-               end;
+                 r := (opcode shr 4) and $1f; // register index
+                 s := opcode and 7;
+                 _set := (opcode and $0200) <> 0;
+                 branch := (((fData[r] and (1 shl s)) <> 0) and _set) or ((not ((fData[r] and (1 shl s)) <> 0)) and (not _set));
+                 //fState('%s %s[%02x], $%02x\t; Will%s branch\n', _set ? 'sbrs' : 'sbrc', avr_regname(r), fData[r], 1 shl s, branch ? '':' not');
+                 if (branch) then
+                 begin
+                    if (Is32bitInstr(new_pc)) then
+                    begin
+                       new_pc := (new_pc + 4) and fPCMask;
+                       Inc(cycle, 2);
+                    end
+                    else
+                    begin
+                       new_pc := (new_pc + 2) and fPCMask;
+                       Inc(cycle);
+                    end;
+                 end;
+               end
+               else
+                  InvalidOpcode();
             end;
             else
                InvalidOpcode();
