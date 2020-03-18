@@ -176,7 +176,7 @@ function TAvr.Is32bitInstr(apc: TFlashAddr): boolean;
 var
    o: word;
 begin
-   o := (fFLASH[apc] or (fFLASH[apc + 1] shl 8)) and $fc0f;
+   o := (fFLASH[apc] or (fFLASH[apc + 1] shl 8)) and $fe0f;
    Result := (o = $9200) or // STS ! Store Direct to fData Space
       (o = $9000) or // LDS Load Direct from fData Space
       (o = $940c) or // JMP Long Jump
