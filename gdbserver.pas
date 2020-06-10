@@ -60,10 +60,13 @@ type
     procedure Escape(var AStr: string);
     procedure Respond(AStr: string);
     procedure Respond(ATyp: TStopReply);
+    procedure HexEncodeRespond(AStr: string);
 
     function HandlePacket(APacket: string): boolean;
 
     function fTcpReadChar: char;
+    function HexDecode(hexCode: string): string;
+    procedure HandleRcmd(req: string);
   protected
     procedure Execute; override;
   public
@@ -98,7 +101,7 @@ uses
 
 
 var
-  debugPrint: boolean = true;
+  debugPrint: boolean = false;
 
 procedure dbgPrint(const c: char);
 begin
@@ -250,6 +253,20 @@ procedure TGDBServer.Respond(ATyp: TStopReply);
     end;
   end;
 
+procedure TGDBServer.HexEncodeRespond(AStr: string);
+var
+  enc: string;
+  i, v: integer;
+begin
+  enc := '';
+  for i := 1 to length(AStr) do
+  begin
+    v := ord(AStr[i]);
+    enc := enc + HexStr(v, 2);
+  end;
+  Respond(enc);
+end;
+
 function TGDBServer.HandlePacket(APacket: string): boolean;
   var
     addr, len, val: Int64;
@@ -374,12 +391,20 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         if pos('Supported', APacket) > 0 then
           Respond(fHandler.SupportedOptions)
         else if pos('Xfer:memory-map:read', APacket) > 0 then  // qXfer:memory-map:read::0,18a
-          begin
-            delete(APacket, 1, pos('::', APacket)+1);
-            addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
-            val:=strtoint64('$'+APacket);
-            respond(fHandler.MemoryMap(addr, val));
-          end
+        begin
+          delete(APacket, 1, pos('::', APacket)+1);
+          addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
+          val:=strtoint64('$'+APacket);
+          respond(fHandler.MemoryMap(addr, val));
+        end
+        else if pos('Rcmd', APacket) > 0 then   // mon help = qRcmd,68656c70
+        begin
+          delete(APacket, 1, pos(',', APacket));
+          if length(APacket) > 0 then
+            HandleRcmd(APacket)
+          else
+           exit(false);
+        end
         else
           exit(false);
      'R':
@@ -481,6 +506,75 @@ begin
     result := char(fReadBuffer.ReadByte)
   else
     result := #0;
+end;
+
+function TGDBServer.HexDecode(hexCode: string): string;
+var
+  i: integer;
+  s: string;
+begin
+  SetLength(Result, length(hexCode) div 2);
+  for i := 1 to length(Result) do
+  begin
+    s := '$' + hexCode[2*i-1] + hexCode[2*i];
+    result[i] := char(StrToInt(s));
+  end;
+end;
+
+procedure TGDBServer.HandleRcmd(req: string);
+var
+  s, resp: string;
+  cmds: TStringList;
+  i: integer;
+begin
+  if length(req) = 0 then exit;
+
+  cmds := TStringList.Create;
+  try
+    cmds.Delimiter := ' ';
+    cmds.DelimitedText := lowercase(HexDecode(req));
+
+    resp := 'OK';  // Only override on actual error or alternative output
+    case cmds[0] of
+      'help':
+        begin
+          resp := '  help - List of commands supported.'+LineEnding +
+                  '  set remote-debug [1 or 0] - Enable or disable remote protocol debug message'+LineEnding;
+        end;
+      'set':  // Options: remote-debug
+        begin
+          if cmds.Count = 3 then
+          begin
+            case cmds[1] of
+              'remote-debug':
+                begin
+                  if cmds[2] = '1' then
+                    debugPrint := true
+                  else if cmds[2] = '0' then
+                    debugPrint := false
+                  else
+                    resp := 'E00';
+                end
+              else
+                resp := 'E00';
+            end
+          end
+          else
+            resp := 'E00';
+        end;
+      else
+        resp := '';
+    end;
+  finally
+    cmds.Free;
+  end;
+
+  // Monitor responses should be encoded,
+  // but normal protocol responses (OK, Enn) should be returned plain text
+  if (resp = '') or (resp = 'OK') or ((length(resp) = 3) and (resp[1] = 'E')) then
+    Respond(resp)
+  else
+    HexEncodeRespond(resp);
 end;
 
 procedure TGDBServer.Execute;
