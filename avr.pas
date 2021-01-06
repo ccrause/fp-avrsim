@@ -43,6 +43,14 @@ type
 
    TSregField = (S_C, S_Z, S_N, S_V, S_S, S_H, S_T, S_I);
 
+   TDataBreak = record
+     startAddress: longword;
+     range: longword;
+     watchType: byte;  // avoid pulling in gdbserver
+   end;
+   TDataBreakArray = array of TDataBreak;
+   PDataBreakArray = ^TDataBreakArray;
+
    { TAvr }
 
    TAvr = class
@@ -54,12 +62,21 @@ type
     fSREG: array[TSregField] of boolean;
     fState: TAvrState;
 
+    // Lists of memory access watch addresses
+    fReadDataWatchpoints: TDataBreakArray;
+    fWriteDataWatchpoints: TDataBreakArray;
+
+    fDataWatchBreak: boolean;
+    fDataWatchAddress: longword;
+    fDataWatchType: byte;
+
     fRAMPZ, fEIND: word;
 
     fExitRequested: boolean;
     fExitCode: byte;
 
     StopOnJmpCallToZero : boolean;
+    fSRamStart: word;
 
     function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
@@ -115,6 +132,10 @@ type
     procedure WriteFlash(const Data; Count, Offset: longint);
     procedure LoadFlashBinary(const AFilename: string);
 
+    procedure addDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
+    procedure removeDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
+    procedure clearDataWatchBreak;
+
     constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024;AVR6 : Boolean = false);
 
     property RAM[AIndex: longint]: byte read GetData write SetData;
@@ -130,6 +151,11 @@ type
     property AVR6: boolean read GetAVR6 write SetAVR6;
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
+    property ramStart: word read fSRamStart write fSRamStart;
+
+    property DataWatchBreak: boolean read fDataWatchBreak;
+    property DataWatchAddress: longword read fDataWatchAddress;
+    property DataWatchType: byte read fDataWatchType;
    end;
 
 const
@@ -150,7 +176,7 @@ function TAvr.Is32bitInstr(apc: TFlashAddr): boolean;
 var
    o: word;
 begin
-   o := (fFLASH[apc] or (fFLASH[apc + 1] shl 8)) and $fc0f;
+   o := (fFLASH[apc] or (fFLASH[apc + 1] shl 8)) and $fe0f;
    Result := (o = $9200) or // STS ! Store Direct to fData Space
       (o = $9000) or // LDS Load Direct from fData Space
       (o = $940c) or // JMP Long Jump
@@ -222,13 +248,49 @@ begin
 end;
 
 procedure TAvr.avr_core_watch_write(r: word; v: byte);
+var
+  i: integer;
 begin
    fData[r] := v;
+
+   if length(fWriteDataWatchpoints) > 0 then
+   begin
+     i := 0;
+     while (i < length(fWriteDataWatchpoints)) and
+           ((r < fWriteDataWatchpoints[i].startAddress) or
+            (r >= (fWriteDataWatchpoints[i].startAddress + fWriteDataWatchpoints[i].range))) do
+       inc(i);
+
+     if i < length(fWriteDataWatchpoints) then
+     begin
+       fDataWatchBreak := true;
+       fDataWatchAddress := r;
+       fDataWatchType := fWriteDataWatchpoints[i].watchType;
+     end;
+   end;
 end;
 
 function TAvr.avr_core_watch_read(r: word): byte;
+var
+  i: integer;
 begin
    result := fData[r];
+
+   if length(fReadDataWatchpoints) > 0 then
+   begin
+     i := 0;
+     while (i < length(fReadDataWatchpoints)) and
+           ((r < fReadDataWatchpoints[i].startAddress) or
+            (r >= (fReadDataWatchpoints[i].startAddress + fReadDataWatchpoints[i].range))) do
+       inc(i);
+
+     if i < length(fReadDataWatchpoints) then
+     begin
+       fDataWatchBreak := true;
+       fDataWatchAddress := r;
+       fDataWatchType := fReadDataWatchpoints[i].watchType;
+     end;
+   end;
 end;
 
 function TAvr.GetIO(r: word; var v: byte): boolean;
@@ -297,7 +359,7 @@ end;
  }
 procedure TAvr.SetRAM(addr: word; v: byte);
 begin
-   if (addr < 256) then
+   if (addr < fSRamStart) then
       SetReg(addr, v)
    else
       avr_core_watch_write(addr, v);
@@ -318,7 +380,7 @@ begin
        }
       ReadSREG(fData[R_SREG]);
    end
-   else if ((addr > 31) and (addr < 256)) then
+   else if ((addr > 31) and (addr < fSRamStart)) then
    begin
       r:=0;
       if GetIO(addr, r) then
@@ -704,7 +766,7 @@ begin
             $1c00:
             begin // ADD with carry 0001 11 rd dddd rrrr
                get_r_d_10(opcode, r, d, vd, vr);
-               res := vd + vr + ord(fSREG[S_C]);
+               res := byte(vd + vr + ord(fSREG[S_C]));
                if (r = d) then
                begin
                   //fState('rol %s[%02x] := %02x\n', avr_regname(d), fData[d], res);
@@ -852,7 +914,7 @@ begin
          case (opcode and $d008) of
             $a000,
             $8000:
-            begin // LD (LDD) – Load Indirect using Z 10q0 qq0r rrrr 0qqq
+            begin // LD (LDD) or ST (STD) – Load/Store Indirect using Z 10q0 qq0r rrrr 0qqq
                v := fData[R_ZL] or (fData[R_ZH] shl 8);
                r := (opcode shr 4) and $1f;
                q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
@@ -870,7 +932,7 @@ begin
             end;
             $a008,
             $8008:
-            begin // LD (LDD) – Load Indirect using Y 10q0 qq0r rrrr 1qqq
+            begin // LD (LDD) or ST (STD) – Load Indirect using Y 10q0 qq0r rrrr 1qqq
                v := fData[R_YL] or (fData[R_YH] shl 8);
                r := (opcode shr 4) and $1f;
                q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
@@ -932,8 +994,15 @@ begin
                end;
                $95e8:
                begin // SPM
-                  //fState('spm\n');
                   SPM;
+               end;
+               $95f8:
+               begin // SPM Z+
+                  SPM;
+                  z := fData[R_ZL] or (fData[R_ZH] shl 8);
+                  Inc(z);
+                  SetReg(R_ZH, z shr 8);
+                  SetReg(R_ZL, byte(z));
                end;
                $9409, // IJMP Indirect jump 1001 0100 0000 1001
                $9419, // EIJMP Indirect jump 1001 0100 0001 1001 bit 4 is 'indirect'
@@ -1099,7 +1168,7 @@ begin
                         SetReg(r, GetRAM(y));
                         if (op = 1) then
                            Inc(y);
-                        SetReg(R_YH, y shr 8);
+                        SetReg(R_YH, byte(y shr 8));
                         SetReg(R_YL, byte(y));
                      end;
                      $9209,
@@ -1115,7 +1184,7 @@ begin
                         SetRAM(y, fData[r]);
                         if (op = 1) then
                            Inc(y);
-                        SetReg(R_YH, y shr 8);
+                        SetReg(R_YH, byte(y shr 8));
                         SetReg(R_YL, byte(y));
                      end;
                      $9200:
@@ -1141,7 +1210,7 @@ begin
                         SetReg(r, GetRAM(z));
                         if (op = 1) then
                            Inc(z);
-                        SetReg(R_ZH, z shr 8);
+                        SetReg(R_ZH, byte(z shr 8));
                         SetReg(R_ZL, byte(z));
                      end;
                      $9201,
@@ -1405,7 +1474,7 @@ begin
                                  $9c00:
                                  begin // MUL - Multiply Unsigned 1001 11rd dddd rrrr
                                     get_r_d_10(opcode, r, d, vd, vr);
-                                    res16 := vd * vr;
+                                    res16 := smallint(vd * vr);
                                     //fState('mul %s[%02x], %s[%02x] := %04x\n', avr_regname(d), vd, avr_regname(r), vr, res);
                                     Inc(cycle);
                                     SetReg(0, byte(res16));
@@ -1506,44 +1575,59 @@ begin
             $f800,
             $f900:
             begin // BLD – Bit Store from T into a Bit in Register 1111 100r rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               if fSREG[s_t] then
-                  v := (fData[r] and (not (1 shl s))) or (1 shl s)
+               if opcode and 8 = 0 then
+               begin
+                  r := (opcode shr 4) and $1f; // register index
+                  s := opcode and 7;
+                  if fSREG[s_t] then
+                     v := (fData[r] and (not (1 shl s))) or (1 shl s)
+                  else
+                     v := (fData[r] and (not (1 shl s))) or 0;
+                  //fState('bld %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], 1 shl s, v);
+                  SetReg(r, v);
+               end
                else
-                  v := (fData[r] and (not (1 shl s))) or 0;
-               //fState('bld %s[%02x], $%02x := %02x\n', avr_regname(r), fData[r], 1 shl s, v);
-               SetReg(r, v);
+                  InvalidOpcode();
             end;
             $fa00,
             $fb00:
             begin // BST – Bit Store into T from bit in Register 1111 100r rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               //fState('bst %s[%02x], $%02x\n', avr_regname(r), fData[r], 1 shl s);
-               fSREG[S_T] := odd(fData[r] shr s);
+               if opcode and 8 = 0 then
+               begin
+                  r := (opcode shr 4) and $1f; // register index
+                  s := opcode and 7;
+                  //fState('bst %s[%02x], $%02x\n', avr_regname(r), fData[r], 1 shl s);
+                  fSREG[S_T] := odd(fData[r] shr s);
+               end
+               else
+                  InvalidOpcode();
             end;
             $fc00,
             $fe00:
             begin // SBRS/SBRC – Skip if Bit in Register is Set/Clear 1111 11sr rrrr 0bbb
-               r := (opcode shr 4) and $1f; // register index
-               s := opcode and 7;
-               _set := (opcode and $0200) <> 0;
-               branch := (((fData[r] and (1 shl s)) <> 0) and _set) or ((not ((fData[r] and (1 shl s)) <> 0)) and (not _set));
-               //fState('%s %s[%02x], $%02x\t; Will%s branch\n', _set ? 'sbrs' : 'sbrc', avr_regname(r), fData[r], 1 shl s, branch ? '':' not');
-               if (branch) then
+               if opcode and 8 = 0 then
                begin
-                  if (Is32bitInstr(new_pc)) then
-                  begin
-                     new_pc := (new_pc + 4) and fPCMask;
-                     Inc(cycle, 2);
-                  end
-                  else
-                  begin
-                     new_pc := (new_pc + 2) and fPCMask;
-                     Inc(cycle);
-                  end;
-               end;
+                 r := (opcode shr 4) and $1f; // register index
+                 s := opcode and 7;
+                 _set := (opcode and $0200) <> 0;
+                 branch := (((fData[r] and (1 shl s)) <> 0) and _set) or ((not ((fData[r] and (1 shl s)) <> 0)) and (not _set));
+                 //fState('%s %s[%02x], $%02x\t; Will%s branch\n', _set ? 'sbrs' : 'sbrc', avr_regname(r), fData[r], 1 shl s, branch ? '':' not');
+                 if (branch) then
+                 begin
+                    if (Is32bitInstr(new_pc)) then
+                    begin
+                       new_pc := (new_pc + 4) and fPCMask;
+                       Inc(cycle, 2);
+                    end
+                    else
+                    begin
+                       new_pc := (new_pc + 2) and fPCMask;
+                       Inc(cycle);
+                    end;
+                 end;
+               end
+               else
+                  InvalidOpcode();
             end;
             else
                InvalidOpcode();
@@ -1613,6 +1697,76 @@ begin
    end;
 end;
 
+procedure TAvr.addDataWatch(AAddr, ARange: longword; readBreak: boolean;
+  watchType: byte);
+var
+  i: integer;
+  found: boolean;
+  watchpoints: PDataBreakArray;
+begin
+  if readBreak then
+    watchpoints := @fReadDataWatchpoints
+  else
+    watchpoints := @fWriteDataWatchpoints;
+
+  i := 0;
+  found := false;
+  while (i < length(watchpoints^)) and not found do
+  begin
+    found := (watchpoints^[i].startAddress = AAddr) and
+             (watchpoints^[i].range = ARange);
+    inc(i);
+  end;
+
+  if not found then
+  begin
+    SetLength(watchpoints^, length(watchpoints^)+1);
+    watchpoints^[length(watchpoints^)-1].startAddress := AAddr;
+    watchpoints^[length(watchpoints^)-1].range := ARange;
+    watchpoints^[length(watchpoints^)-1].watchType := watchType;
+  end;
+end;
+
+procedure TAvr.removeDataWatch(AAddr, ARange: longword; readBreak: boolean;
+  watchType: byte);
+var
+  i: integer;
+  found: boolean;
+  watchpoints: PDataBreakArray;
+begin
+  if readBreak then
+    watchpoints := @fReadDataWatchpoints
+  else
+    watchpoints := @fWriteDataWatchpoints;
+
+  i := 0;
+  found := false;
+  while (i < length(watchpoints^)) and not found do
+  begin
+    found := (watchpoints^[i].startAddress = AAddr) and
+             (watchpoints^[i].range = ARange);
+    inc(i);
+    // i now points to after the found item
+  end;
+
+  if found then
+  begin
+    while (i > 0) and (i < length(watchpoints^)) do
+    begin
+      watchpoints^[i-1].startAddress := watchpoints^[i].startAddress;
+      watchpoints^[i-1].range := watchpoints^[i].range;
+      watchpoints^[i-1].watchType := watchpoints^[i].watchType;
+      inc(i);
+    end;
+    SetLength(watchpoints^, length(watchpoints^)-1);
+  end;
+end;
+
+procedure TAvr.clearDataWatchBreak;
+begin
+  fDataWatchBreak := false;
+end;
+
 constructor TAvr.Create(AFlashSize : longint; ARamSize : longint; AVR6 : Boolean);
 begin
    inherited Create;
@@ -1628,6 +1782,8 @@ begin
      fPCMask:=$3fffff
    else
      fPCMask:=$ffff;
+
+   fSRamStart := $100;  // previous hardcoded value, change to specific MCU value
 end;
 
 end.

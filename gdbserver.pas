@@ -5,44 +5,36 @@ unit gdbserver;
 interface
 
 uses
-  Classes, bufstream, SysUtils, strutils, ssockets;
+  Classes, SysUtils, strutils, ssockets;
 
 type
   TGDBServerListener = class;
 
-  TBreakpointType = (btMemBreak,btHWBreak, btWWatch, btRWatch, btAWatch);
+  TBreakpointType = (btMemBreak, btHWBreak, btWWatch, btRWatch, btAWatch);
   TStopReply = (srOK, srSigInt, srBreakPoint);
 
-  TBreakNotify = procedure of object;
+  TNotification = procedure of object;
 
   IGDBHandler = interface
     function GetStatus: TStopReply;
     function GetStatusStr: string;
     function Continue: TStopReply;
     function SingleStep: TStopReply;
-
     procedure DoBreak;
-
     procedure StepCycles(ACycles: longint);
 
     function Read(var ABuffer; AAddr,ALen: int64): boolean;
     function Write(const ABuffer; AAddr,ALen: int64): boolean;
-
     function ReadReg(AAddr: int64; var AVal: int64): boolean;
     function WriteReg(AAddr, AVal: int64): boolean;
-
     function GetRegisterString: string;
 
-    procedure SetBreakHit(AEvent: TBreakNotify);
-    procedure SetHaltProc(AEvent: TBreakNotify);
-
+    procedure SendNotification(AEvent: TNotification);
     function SupportedOptions: string;
 
     procedure Reset;
-
     procedure SetBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
     procedure RemoveBreakpoint(AType: TBreakpointType; AAddr: int64; AKind: longint);
-
     function BreakpointHit: boolean;
     function DoHalt: boolean;
     function MemoryMap(offset, len: dword): string;
@@ -57,8 +49,10 @@ type
     fReadBuffer: TStream;
     fHandler: IGDBHandler;
     fSock: TSocketStream;
-    fOldBreak: boolean;
+    fNewNotification: boolean;
+    fRunning: boolean;
 
+    procedure fNotifyEvent;
     procedure BreakHit;
     procedure ReadPacket;
 
@@ -66,10 +60,13 @@ type
     procedure Escape(var AStr: string);
     procedure Respond(AStr: string);
     procedure Respond(ATyp: TStopReply);
+    procedure HexEncodeRespond(AStr: string);
 
     function HandlePacket(APacket: string): boolean;
 
     function fTcpReadChar: char;
+    function HexDecode(hexCode: string): string;
+    procedure HandleRcmd(req: string);
   protected
     procedure Execute; override;
   public
@@ -104,7 +101,7 @@ uses
 
 
 var
-  debugPrint: boolean = true;
+  debugPrint: boolean = false;
 
 procedure dbgPrint(const c: char);
 begin
@@ -149,6 +146,8 @@ procedure TGDBServer.ReadPacket;
     s: String;
   begin
     repeat
+      // Check if handler needs servicing before new TCP data request starts
+      if fNewNotification then exit;
       c := fTcpReadChar;
 
       if c=#$3 then
@@ -156,7 +155,6 @@ procedure TGDBServer.ReadPacket;
           dbgPrintLn('-> <Ctrl-C>');
           fHandler.DoBreak;
           Respond(fHandler.GetStatusStr);
-          fOldBreak := true;  // prevent additional break notifications
         end;
     until (c='$') or terminated;
 
@@ -194,7 +192,6 @@ procedure TGDBServer.ReadPacket;
         if not HandlePacket(s) then
         begin
           Respond('');
-          dbgPrintLn('<- ''''');
         end;
       end
     else
@@ -256,6 +253,20 @@ procedure TGDBServer.Respond(ATyp: TStopReply);
     end;
   end;
 
+procedure TGDBServer.HexEncodeRespond(AStr: string);
+var
+  enc: string;
+  i, v: integer;
+begin
+  enc := '';
+  for i := 1 to length(AStr) do
+  begin
+    v := ord(AStr[i]);
+    enc := enc + HexStr(v, 2);
+  end;
+  Respond(enc);
+end;
+
 function TGDBServer.HandlePacket(APacket: string): boolean;
   var
     addr, len, val: Int64;
@@ -278,6 +289,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'c':
         begin
           fHandler.Continue;
+          fRunning := true;
         end;
       's':
         begin
@@ -324,7 +336,10 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'D', 'k':
         begin
           if APacket[1] = 'D' then
-            dbgPrintLn('Client detached - terminating.')
+          begin
+            dbgPrintLn('Client detached - terminating.');
+            Respond('OK');
+          end
           else
             dbgPrintLn('Client killed program - terminating.');
           Terminate;
@@ -376,12 +391,20 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         if pos('Supported', APacket) > 0 then
           Respond(fHandler.SupportedOptions)
         else if pos('Xfer:memory-map:read', APacket) > 0 then  // qXfer:memory-map:read::0,18a
-          begin
-            delete(APacket, 1, pos('::', APacket)+1);
-            addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
-            val:=strtoint64('$'+APacket);
-            respond(fHandler.MemoryMap(addr, val));
-          end
+        begin
+          delete(APacket, 1, pos('::', APacket)+1);
+          addr:=strtoint64('$'+Copy2SymbDel(APacket,','));
+          val:=strtoint64('$'+APacket);
+          respond(fHandler.MemoryMap(addr, val));
+        end
+        else if pos('Rcmd', APacket) > 0 then   // mon help = qRcmd,68656c70
+        begin
+          delete(APacket, 1, pos(',', APacket));
+          if length(APacket) > 0 then
+            HandleRcmd(APacket)
+          else
+           exit(false);
+        end
         else
           exit(false);
      'R':
@@ -482,30 +505,100 @@ begin
   if dataAvailable then
     result := char(fReadBuffer.ReadByte)
   else
-  begin
     result := #0;
-    if fHandler.DoHalt then
-    begin
-      WriteLn('Simulation exited...');
-      DoExit;
-    end;
+end;
+
+function TGDBServer.HexDecode(hexCode: string): string;
+var
+  i: integer;
+  s: string;
+begin
+  SetLength(Result, length(hexCode) div 2);
+  for i := 1 to length(Result) do
+  begin
+    s := '$' + hexCode[2*i-1] + hexCode[2*i];
+    result[i] := char(StrToInt(s));
   end;
 end;
 
+procedure TGDBServer.HandleRcmd(req: string);
+var
+  s, resp: string;
+  cmds: TStringList;
+  i: integer;
+begin
+  if length(req) = 0 then exit;
+
+  cmds := TStringList.Create;
+  try
+    cmds.Delimiter := ' ';
+    cmds.DelimitedText := lowercase(HexDecode(req));
+
+    resp := 'OK';  // Only override on actual error or alternative output
+    case cmds[0] of
+      'help':
+        begin
+          resp := '  help - List of commands supported.'+LineEnding +
+                  '  set remote-debug [1 or 0] - Enable or disable remote protocol debug message'+LineEnding;
+        end;
+      'set':  // Options: remote-debug
+        begin
+          if cmds.Count = 3 then
+          begin
+            case cmds[1] of
+              'remote-debug':
+                begin
+                  if cmds[2] = '1' then
+                    debugPrint := true
+                  else if cmds[2] = '0' then
+                    debugPrint := false
+                  else
+                    resp := 'E00';
+                end
+              else
+                resp := 'E00';
+            end
+          end
+          else
+            resp := 'E00';
+        end;
+      else
+        resp := '';
+    end;
+  finally
+    cmds.Free;
+  end;
+
+  // Monitor responses should be encoded,
+  // but normal protocol responses (OK, Enn) should be returned plain text
+  if (resp = '') or (resp = 'OK') or ((length(resp) = 3) and (resp[1] = 'E')) then
+    Respond(resp)
+  else
+    HexEncodeRespond(resp);
+end;
+
 procedure TGDBServer.Execute;
-  var
-    newBreak: boolean;
   begin
-    fOldBreak := fHandler.BreakpointHit;  // Start in rsBreak state by default.  No need to send this through since gdb starts with a status request (?)
+    fRunning := false;  // sim starts paused
+    fNewNotification := false; // no new break notifications
     while not terminated do
       begin
         ReadPacket;
-        newBreak := fHandler.BreakpointHit;
-        if newBreak and not fOldBreak then
+        if fRunning and fNewNotification then
         begin
-          BreakHit;
+          if fHandler.DoHalt then
+          begin
+            WriteLn('Simulation exited...');
+            DoExit;
+            fRunning := false;
+          end
+          else if fHandler.BreakpointHit then
+          begin
+            BreakHit;
+            fRunning := false;
+          end;
+          fNewNotification := false;
         end;
-        fOldBreak := newBreak;
       end;
     fSock.Free;
     fOwner.Terminate;
@@ -521,6 +614,11 @@ procedure TGDBServer.DoExit;
     tmp.Free;
   end;
 
+procedure TGDBServer.fNotifyEvent;
+begin
+  fNewNotification := true;
+end;
+
 procedure TGDBServer.BreakHit;
   begin
     Respond(fHandler.GetStatusStr);
@@ -532,9 +630,8 @@ constructor TGDBServer.Create(AOwner: TGDBServerListener; ASock: TSocketStream; 
     fOwner:=AOwner;
     fSock:=ASock;
     fReadBuffer:=fSock;//TReadBufStream.Create(fSock);
-    fOldBreak := false;
-    fHandler.SetBreakHit(@BreakHit);
-    fHandler.SetHaltProc(@DoExit);
+    fNewNotification := false;
+    fHandler.SendNotification(@fNotifyEvent);
 
     inherited Create(false);
   end;
@@ -600,7 +697,7 @@ destructor TGDBServerListener.Destroy;
     i: longint;
   begin
     Terminate;
-    fServer.StopAccepting;
+    //fServer.StopAccepting;
     WaitFor;
 
     for i := fClients.count-1 downto 0 do
@@ -610,6 +707,7 @@ destructor TGDBServerListener.Destroy;
         cl.WaitFor;
         cl.free;
       end;
+    fClients.Free;
 
     inherited Destroy;
   end;
