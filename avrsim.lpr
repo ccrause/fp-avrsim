@@ -13,6 +13,7 @@ uses {$ifdef UNIX}
 const
   VMA_FLASH:longword	 =  $00000000;
   VMA_RAM:longword		 =  $00800000;
+  VMA_EEPROM:longword  =  $00810000;
 
 type
   TRunnerState = (rsBreak, rsWatchBreak, rsRunning);
@@ -289,6 +290,8 @@ var
         result := fAVR.Flash[AAddr]
       else if (AAddr >= VMA_RAM) and (AAddr <= (VMA_RAM + $FFFF)) then
         result := fAVR.RAM[(AAddr-VMA_RAM)]
+      else if (AAddr >= VMA_EEPROM) and (AAddr < (VMA_EEPROM + $FFFF)) then
+        result := fAVR.readEEPROM(AAddr - VMA_EEPROM)
       else
         result:=0;
     end;
@@ -297,8 +300,10 @@ var
     begin
       if (AAddr <= $FFFF) then
         fAVR.Flash[AAddr-VMA_FLASH]:=val
-      else if (AAddr > VMA_RAM) and (AAddr < (VMA_RAM + $FFFF)) then
+      else if (AAddr >= VMA_RAM) and (AAddr < (VMA_RAM + $FFFF)) then
         fAVR.RAM[AAddr-VMA_RAM]:=val
+      else if (AAddr >= VMA_EEPROM) and (AAddr < (VMA_EEPROM + $FFFF)) then
+        fAVR.writeEEPROM(val, AAddr-VMA_EEPROM)
       else
         WriteLn('Writing byte beyond RAM');
     end;
