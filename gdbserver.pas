@@ -92,6 +92,9 @@ type
     destructor Destroy; override;
   end;
 
+var
+  debugPrint: boolean = false;
+
 implementation
 
 uses
@@ -100,8 +103,6 @@ uses
   {$ENDIF}
 
 
-var
-  debugPrint: boolean = false;
 
 procedure dbgPrint(const c: char);
 begin

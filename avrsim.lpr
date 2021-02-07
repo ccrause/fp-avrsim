@@ -654,6 +654,7 @@ begin
   try
     if RunInDebugger then
       begin
+        gdbserver.debugPrint := true;
         fHandler:=TDebugAVR.Create;
         if setRamStart then
           fHandler.AVR.ramStart := StrToInt(RamStart);
