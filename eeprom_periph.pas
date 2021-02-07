@@ -98,7 +98,8 @@ constructor TEEPROM.Create(const aAVR: TAVR; const AEEPROMSize: word);
 begin
   fAVR := aAVR;
   SetLength(EEPROM, AEEPROMSize);
-  FillByte(EEPROM[0], AEEPROMSize, 0);
+  // Fill EEPROM as if just deleted
+  FillByte(EEPROM[0], AEEPROMSize, $FF);
   EECR  := 0;
   EEDR  := 0;
   EEARL := 0;
