@@ -14,6 +14,7 @@ const
   VMA_FLASH:longword	 =  $00000000;
   VMA_RAM:longword		 =  $00800000;
   VMA_EEPROM:longword  =  $00810000;
+  VMA_FUSES:longword   =  $00820000;
 
 type
   TRunnerState = (rsBreak, rsWatchBreak, rsRunning);
@@ -292,6 +293,11 @@ var
         result := fAVR.RAM[(AAddr-VMA_RAM)]
       else if (AAddr >= VMA_EEPROM) and (AAddr < (VMA_EEPROM + $FFFF)) then
         result := fAVR.readEEPROM(AAddr - VMA_EEPROM)
+      else if (AAddr >= VMA_FUSES) and (AAddr < (VMA_FUSES + $FFFF)) then
+      begin
+        writeln('Returning unprogrammed fuse byte as default');
+        result := $FF; // Not implemented
+      end
       else
         result:=0;
     end;
@@ -304,8 +310,12 @@ var
         fAVR.RAM[AAddr-VMA_RAM]:=val
       else if (AAddr >= VMA_EEPROM) and (AAddr < (VMA_EEPROM + $FFFF)) then
         fAVR.writeEEPROM(val, AAddr-VMA_EEPROM)
+      else if (AAddr >= VMA_FUSES) and (AAddr < (VMA_FUSES + $FFFF)) then
+      begin
+        writeln('Ignoring fuse byte');
+      end
       else
-        WriteLn('Writing byte beyond RAM');
+        WriteLn('Writing byte beyond FUSE');
     end;
 
   function TDebugAVR.Continue: TStopReply;
