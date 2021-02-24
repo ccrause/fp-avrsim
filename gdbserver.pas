@@ -524,9 +524,8 @@ end;
 
 procedure TGDBServer.HandleRcmd(req: string);
 var
-  s, resp: string;
+  resp: string;
   cmds: TStringList;
-  i: integer;
 begin
   if length(req) = 0 then exit;
 
@@ -534,6 +533,7 @@ begin
   try
     cmds.Delimiter := ' ';
     cmds.DelimitedText := lowercase(HexDecode(req));
+    dbgPrintLn('Rcmd received: ' + cmds.DelimitedText);
 
     resp := 'OK';  // Only override on actual error or alternative output
     case cmds[0] of
@@ -564,7 +564,7 @@ begin
             resp := 'E00';
         end;
       else
-        resp := '';
+        resp := 'E00';
     end;
   finally
     cmds.Free;
