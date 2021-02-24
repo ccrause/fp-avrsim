@@ -107,10 +107,12 @@ var
   fHandler: TDebugAVR;
   x: TAvr;
   port: String;
+  Verbose: boolean = false;
 
   procedure TBreakableAVR.Notify;
     begin
-      writeln('Hit breakpoint at ',hexstr(fRunner.fAvr.PC,4));
+      if Verbose then
+        writeln('Hit breakpoint at ',hexstr(fRunner.fAvr.PC,4));
 
       fRunner.DoBreak;
       if assigned(OnNotify) then
@@ -477,7 +479,8 @@ var
     begin
       old:=fRunner.DoBreak;
 
-      writeln('Writing ', alen, ' bytes to ',hexstr(AAddr,4));
+      if Verbose then
+        writeln('Writing ', alen, ' bytes to $',hexstr(AAddr,8));
 
       result:=true;
       for i := 0 to ALen-1 do
@@ -605,7 +608,7 @@ var
 var
   Filename : String;
   RunInDebugger,
-  SimulateAVR6, Verbose: Boolean;
+  SimulateAVR6: Boolean;
   i : Integer;
   setRamStart: boolean;
   RamStart: string;
@@ -664,7 +667,7 @@ begin
   try
     if RunInDebugger then
       begin
-        gdbserver.debugPrint := true;
+        gdbserver.debugPrint := Verbose;
         fHandler:=TDebugAVR.Create;
         if setRamStart then
           fHandler.AVR.ramStart := StrToInt(RamStart);
