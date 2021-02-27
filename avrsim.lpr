@@ -48,6 +48,7 @@ type
     fLock: TCriticalSection;
     fBreakpoints: array of longword;
   protected
+    function AtBreakPoint: boolean;
     procedure Execute; override;
   public
     procedure AddBreak(typ: TBreakpointType; AAddr: int64; AKind: longint);
@@ -126,10 +127,29 @@ var
       fRunner:=nil;
     end;
 
+  function TAVRRunner.AtBreakPoint: boolean;
+  var
+    i: integer;
+  begin
+    result := false;
+    i := high(fBreakpoints);
+    while i > -1 do
+    begin
+      if fBreakpoints[i] = fAvr.PC then
+      begin
+        i := -1;
+        result := true;
+      end
+      else
+        dec(i);
+    end;
+  end;
+
   procedure TAVRRunner.Execute;
     var
       i: integer;
       tmpState: TRunnerState;
+      checkBPAtStart: boolean = true;
     begin
       while not Terminated do
       begin
@@ -140,25 +160,26 @@ var
           Sleep(1)
         else
         begin
-          fAvr.Step(1);
-          if fAvr.DataWatchBreak then
+          if checkBPAtStart then
           begin
-            tmpState := rsWatchBreak;
-            fAvr.clearDataWatchBreak;
+            if not AtBreakPoint then
+              fAvr.Step(1)
+            else
+              tmpState := rsBreak;
+
+            checkBPAtStart := false;
           end
           else
           begin
-            i := high(fBreakpoints);
-            while i > -1 do
+            fAvr.Step(1);
+
+            if fAvr.DataWatchBreak then
             begin
-              if fBreakpoints[i] = fAvr.PC then
-              begin
-                i := -1;
-                tmpState := rsBreak;
-              end
-              else
-                dec(i);
-            end;
+              tmpState := rsWatchBreak;
+              fAvr.clearDataWatchBreak;
+            end
+            else if AtBreakPoint then
+              tmpState := rsBreak;
           end;
 
           if fAvr.DoExit then
