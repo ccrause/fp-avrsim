@@ -140,27 +140,24 @@ var
           Sleep(1)
         else
         begin
-          // First check for break points, else a BP at 0 will be missed
-          i := high(fBreakpoints);
-          while i > -1 do
+          fAvr.Step(1);
+          if fAvr.DataWatchBreak then
           begin
-            if fBreakpoints[i] = fAvr.PC then
-            begin
-              i := -1;
-              tmpState := rsBreak;
-            end
-            else
-              dec(i);
-          end;
-
-          if tmpState = rsRunning then
+            tmpState := rsWatchBreak;
+            fAvr.clearDataWatchBreak;
+          end
+          else
           begin
-            fAvr.Step(1);
-            // Can only get a watch break if a step was taken
-            if fAvr.DataWatchBreak then
+            i := high(fBreakpoints);
+            while i > -1 do
             begin
-              tmpState := rsWatchBreak;
-              fAvr.clearDataWatchBreak;
+              if fBreakpoints[i] = fAvr.PC then
+              begin
+                i := -1;
+                tmpState := rsBreak;
+              end
+              else
+                dec(i);
             end;
           end;
 
