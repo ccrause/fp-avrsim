@@ -607,8 +607,17 @@ var
       TBreakableAVR(fAVR).Runner:=fRunner;
 
       // Assume avrsim type layout - 32 registers & 224 IO registers, so first RAM address starts at $800100
-      FMemoryMap := format('<memory-map> <memory type="ram" start="0x800000" length="0x%.4x"/> <memory type="flash" start="0" length="0x%.4x">  <property name="blocksize">0x100</property> </memory></memory-map>',
-                      [256 + fAVR.ramSize, fAVR.flashSize]);
+      fMemoryMap := '<memory-map>'+
+                      '<memory type="flash" start="0" length="0x%.4x">'+         // First param: flash size
+                        '<property name="blocksize">0x100</property>'+
+                      '</memory>'+
+                      '<memory type="ram" start="0x800000" length="0x%.4x"/>'+   // Second param: end of mapped data space
+                     // EEPROM
+                      '<memory type="flash" start="0x810000" length="0x%.4x">'+  // Third param: EEPROM size
+                        '<property name="blocksize">0x04</property>'+
+                      '</memory>'+
+                    '</memory-map>';
+      fMemoryMap := format(fMemoryMap, [fAVR.flashSize, fAVR.ramStart + fAVR.ramSize, fAVR.EEPROMsize]);
 
       fRunner.DoBreak;
       fRunner.Start;

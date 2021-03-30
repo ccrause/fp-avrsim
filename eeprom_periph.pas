@@ -21,6 +21,7 @@ type
     // This is the timestamp when EEMPE is set.
     clockTicksWhenEEMPESet: qword;
     procedure setEECRRegister(const AValue: byte);
+    function getSize: word;
   public
     constructor Create(const aAVR: TAVR; const AEEPROMSize: word);
 
@@ -38,6 +39,7 @@ type
     // This means that peripheral clock dependent events may not be completely synchronous
     // because ticks will be updated after decoding and execution of the current instruction is completed
     procedure updateCPUClock(const ACPUTick: qword); override;
+    property size: word read getSize;
   end;
 
 implementation
@@ -92,6 +94,11 @@ begin
 
   if (AValue and (EEPM1_mask or EEPM0_mask)) > 0 then
     writeln('Ignoring EEMP0/1 bits, only atomic write supported');
+end;
+
+function TEEPROM.getSize: word;
+begin
+  result := length(EEPROM);
 end;
 
 constructor TEEPROM.Create(const aAVR: TAVR; const AEEPROMSize: word);

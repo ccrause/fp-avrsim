@@ -129,7 +129,7 @@ type
 
     function getRamSize: dword;
     function getFlashSize: dword;
-    //function getEEPROMSize: dword;
+    function getEEPROMSize: word;
    protected
     procedure InvalidOpcode; virtual;
     procedure WatchdogReset; virtual;
@@ -170,7 +170,7 @@ type
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
     property ramStart: word read fSRamStart write fSRamStart;
-
+    property EEPROMsize: word read getEEPROMSize;
     property DataWatchBreak: boolean read fDataWatchBreak;
     property DataWatchAddress: longword read fDataWatchAddress;
     property DataWatchType: byte read fDataWatchType;
@@ -1678,10 +1678,13 @@ begin
   result := length(fFLASH);
 end;
 
-//function TAvr.getEEPROMSize: dword;
-//begin
-//  result := length(fEEPROM);
-//end;
+function TAvr.getEEPROMSize: word;
+begin
+  if Assigned(fEEPROM) then
+    result := TEEPROM(fEEPROM).size
+  else
+     result := 0;
+end;
 
 procedure TAvr.WatchdogReset;
 begin
