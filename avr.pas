@@ -238,7 +238,10 @@ end;
 
 function TAvr.GetData(AIndex: longint): byte;
 begin
-   Result := fData[AIndex];
+  if AIndex < length(fData) then
+    Result := fData[AIndex]
+  else
+    Result := 0;
 end;
 
 function TAvr.GetAVR6 : boolean;
