@@ -147,7 +147,7 @@ type
     procedure removeDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
     procedure clearDataWatchBreak;
 
-    constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024; AEEPROMSize: word = 1024;
+    constructor Create(AFlashSize: longint = 256*1024; ARamSize: longint = (32*1024 + 256); AEEPROMSize: word = 1024;
       AVR6 : Boolean = false);
 
     destructor Destroy; override;
