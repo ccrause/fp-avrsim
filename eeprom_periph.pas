@@ -55,8 +55,8 @@ const
   EERE_mask = 1;
   EECR_mask =  EEPM1_mask + EEPM0_mask + EERIE_mask + EEMPE_mask + EEPE_mask + EERE_mask;
 
-  // Hardcode for avrsim unit:
-  EE_READY = 1;
+  // Hardcoded for avrsim unit:
+  EE_READY = 1;  // For atmega328P it is interrupt index 22
 
 { TEEPROM }
 
@@ -151,7 +151,7 @@ end;
 procedure TEEPROM.updateCPUClock(const ACPUTick: qword);
 begin
   if ((EECR and EERIE_mask) > 0) and ((EECR and EEPE_mask) = 0) then
-    fAVR.interruptRequest(EE_READY);
+    fAVR.queueInterrupt(EE_READY);
 end;
 
 end.

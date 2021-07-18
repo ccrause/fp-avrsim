@@ -85,6 +85,8 @@ type
     fSRamStart: word;
 
     fEEPROM: TBasePeripheral;
+    fIrqQueue: array of boolean;
+    fPendingIrq: boolean;
 
     function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
@@ -130,6 +132,7 @@ type
     function getRamSize: dword;
     function getFlashSize: dword;
     function getEEPROMSize: word;
+    procedure processInterrupts(var newPC: longword);
    protected
     procedure InvalidOpcode; virtual;
     procedure WatchdogReset; virtual;
@@ -152,8 +155,11 @@ type
 
     destructor Destroy; override;
 
-    // Peripherals should call this with the appropriate index to trigger an interrupt
-    procedure interruptRequest(const index: byte);
+    // Call to set an interrupt request flag
+    procedure queueInterrupt(const IrqIndex: byte);
+    // Call to clear an interrupt request flag
+    // E.g. when writing 1 to a a peripheral's interrupt flag bit
+    procedure clearInterrupt(const IrqIndex: byte);
 
     property RAM[AIndex: longint]: byte read GetData write SetData;
     property Flash[AIndex: longint]: byte read GetFLASH write SetFLASH;
@@ -611,6 +617,7 @@ var
    a: TFlashAddr;
    o: smallint;
    branch: boolean;
+   skipInterruptCheck: boolean = false;
 begin
    opcode := (fFLASH[fPC + 1] shl 8) or fFLASH[fPC];
 {$ifdef TRACE_ALL}
@@ -989,6 +996,9 @@ begin
          if ((opcode and $ff0f) = $9408) then
          begin
             b := (opcode shr 4) and 7;
+            // Execute next instruction before triggering pending interrupts
+            if (b = ord(S_I)) and not fSREG[S_I] then
+              skipInterruptCheck := true;
             //fState('%s%c\n', opcode and $0080 ? 'cl' : 'se', _sreg_bit_name[b]);
             fSREG[TSregField(b)] := ((opcode and $0080) = 0);
          end
@@ -1072,7 +1082,10 @@ begin
                   else
                     new_pc := Pop24() shl 1;
                   if (opcode and $10) <> 0 then // reti
+                  begin
                      fSREG[S_I] := true;
+                     skipInterruptCheck := true;
+                  end;
                   cycle := cycle + 3;
                   //fState('ret%s\n', opcode and $10 ? 'i' : '');
                end;
@@ -1668,6 +1681,12 @@ begin
          InvalidOpcode();
    end;
    Inc(fCycles, cycle);
+
+   // Service peripherals
+   fEEPROM.updateCPUClock(fCycles);
+   // Execute next instruction before triggering pending interrupts
+   if fSREG[S_I] and fPendingIrq and not skipInterruptCheck then
+     processInterrupts(new_pc);
    Result := new_pc;
 end;
 
@@ -1687,6 +1706,21 @@ begin
     result := TEEPROM(fEEPROM).size
   else
      result := 0;
+end;
+
+procedure TAvr.queueInterrupt(const IrqIndex: byte);
+begin
+  if length(fIrqQueue) <= IrqIndex then
+    SetLength(fIrqQueue, IrqIndex+1);
+  fIrqQueue[IrqIndex] := true;
+  fPendingIrq := true;
+end;
+
+procedure TAvr.clearInterrupt(const IrqIndex: byte);
+begin
+  if length(fIrqQueue) <= IrqIndex then
+    SetLength(fIrqQueue, IrqIndex+1);
+  fIrqQueue[IrqIndex] := false;
 end;
 
 procedure TAvr.WatchdogReset;
@@ -1709,10 +1743,7 @@ procedure TAvr.Step(Count: longint);
 var i: longint;
 begin
    for i := 0 to Count - 1 do
-   begin
      fPC := RunOne;
-     fEEPROM.updateCPUClock(fCycles);
-   end;
 end;
 
 procedure TAvr.WriteFlash(const Data; Count, Offset: longint);
@@ -1901,18 +1932,37 @@ begin
     fEEPROM.Free;
 end;
 
-procedure TAvr.interruptRequest(const index: byte);
+procedure TAvr.processInterrupts(var newPC: longword);
+var
+  i, index: word;
 begin
-  // Trigger interrupt of global interrupt is set
-  if fSREG[S_I] then
+  index := 0;
+  i := 0;
+  while (index = 0) and (i < length(fIrqQueue)) do
   begin
+    if fIrqQueue[i] then
+      index := i;
+    inc(i);
+  end;
+  if (index = 0) then
+    fPendingIrq := false
+  else
+  begin
+    fSREG[S_I] := false;
     // push next instruction's PC as return address
     // Todo: check if 2/3 byte PC and push accordingly
-    Push16(fPC);
+    Push16(newPC shr 1);
+    inc(fCycles, 4);
     if flashSize > 8192 then
-      fPC := index * 4
+    begin
+      newPC := index * 4;
+      inc(fCycles, 3);
+    end
     else
-      fPC := index * 2;
+    begin
+      newPC := index * 2;
+      inc(fCycles, 2);
+    end;
   end;
 end;
 
