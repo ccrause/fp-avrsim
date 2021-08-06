@@ -17,7 +17,7 @@ const
   VMA_FUSES:longword   =  $00820000;
 
 type
-  TRunnerState = (rsBreak, rsWatchBreak, rsRunning);
+  TRunnerState = (rsBreak, rsWatchBreak, rsCtrlC, rsRunning);
 
   TAVRRunner = class;
 
@@ -55,6 +55,7 @@ type
     procedure RemoveBreak(typ: TBreakpointType; AAddr: int64; AKind: longint);
 
     function DoBreak: TRunnerState;
+    function DoCtrlC: TRunnerState;
     procedure UnBreak(AOldState: TRunnerState);
     procedure SingleStep;
     procedure Continue;
@@ -76,6 +77,7 @@ type
   public
     function Continue: TStopReply;
     procedure DoBreak;
+    procedure DoCtrlC;
     function GetRegisterString: string;
     function GetStatus: TStopReply;
     function GetStatusStr: string;
@@ -269,6 +271,17 @@ var
       fLock.Leave;
     end;
 
+  function TAVRRunner.DoCtrlC: TRunnerState;
+  begin
+    fLock.Enter;
+
+    Result := fState;
+
+    if fState = rsRunning then
+      fState := rsCtrlC;
+    fLock.Leave;
+  end;
+
   procedure TAVRRunner.UnBreak(AOldState: TRunnerState);
     begin
       fLock.Enter;
@@ -348,9 +361,14 @@ var
     end;
 
   procedure TDebugAVR.DoBreak;
-    begin
-      fRunner.DoBreak;
-    end;
+  begin
+    fRunner.DoBreak;
+  end;
+
+  procedure TDebugAVR.DoCtrlC;
+  begin
+    fRunner.DoCtrlC;
+  end;
 
   function TDebugAVR.GetRegisterString: string;
     var
@@ -397,18 +415,23 @@ var
     old: TRunnerState;
     i: Integer;
   begin
-    result := 'T05';
     old := fRunner.DoBreak;
-    if old = rsBreak then
-      result := result + 'hwbreak:;'
-    else if old = rsWatchBreak then
+    if old = rsCtrlC then
+      result := 'T02'
+    else
     begin
-      case TBreakpointType(fAVR.DataWatchType) of
-        btWWatch: result := result + 'watch';
-        btRWatch: result := result + 'rwatch';
-        btAWatch: result := result + 'awatch';
-        else
-          ;
+      result := 'T05';
+      if old = rsBreak then
+        result := result + 'hwbreak:;'
+      else if old = rsWatchBreak then
+      begin
+        case TBreakpointType(fAVR.DataWatchType) of
+          btWWatch: result := result + 'watch';
+          btRWatch: result := result + 'rwatch';
+          btAWatch: result := result + 'awatch';
+          else
+            ;
+        end;
       end;
       // GDB RSP doesn't explicitly states the byte order of the wathcpoint address
       // Assume it is in target endianness similar to the r values
@@ -435,6 +458,7 @@ var
               + hexstr((fAVR.PC shr 16) and $FF,2)
               + hexstr((fAVR.PC shr 24) and $FF,2)
               + ';';
+
     fRunner.UnBreak(old);
   end;
 

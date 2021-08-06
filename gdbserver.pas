@@ -21,6 +21,7 @@ type
     function Continue: TStopReply;
     function SingleStep: TStopReply;
     procedure DoBreak;
+    procedure DoCtrlC;
     procedure StepCycles(ACycles: longint);
 
     function Read(var ABuffer; AAddr,ALen: int64): boolean;
@@ -154,7 +155,7 @@ procedure TGDBServer.ReadPacket;
       if c=#$3 then
         begin
           dbgPrintLn('-> <Ctrl-C>');
-          fHandler.DoBreak;
+          fHandler.DoCtrlC;
           Respond(fHandler.GetStatusStr);
         end;
     until (c='$') or terminated;
