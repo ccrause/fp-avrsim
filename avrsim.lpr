@@ -433,14 +433,7 @@ var
             ;
         end;
       end;
-      // GDB RSP doesn't explicitly states the byte order of the wathcpoint address
-      // Assume it is in target endianness similar to the r values
-      result := result + ':' +
-        //hexStr(fAVR.DataWatchAddress + $800000, 6) + ';';
-        HexStr(fAVR.DataWatchAddress and $FF, 2) +
-        HexStr((fAVR.DataWatchAddress shr 8) and $FF, 2) +
-        HexStr(((fAVR.DataWatchAddress shr 16) or $80) and $FF, 2) +
-        '00;';
+      result := result + ':' + hexStr(fAVR.DataWatchAddress + $800000, 6) + ';';
     end;
 
     // Register file
