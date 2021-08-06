@@ -432,8 +432,8 @@ var
           else
             ;
         end;
+        result := result + ':' + hexStr(fAVR.DataWatchAddress + $800000, 6) + ';';
       end;
-      result := result + ':' + hexStr(fAVR.DataWatchAddress + $800000, 6) + ';';
     end;
 
     // Register file
