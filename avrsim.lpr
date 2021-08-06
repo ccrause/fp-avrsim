@@ -229,7 +229,7 @@ var
       if typ in [btMemBreak, btHWBreak] then
       begin
         i := low(fBreakpoints);
-        if i = 0 then exit;
+        if i = -1 then exit;
 
         while (fBreakpoints[i] <> AAddr) and (i < high(fBreakpoints)) do
           inc(i);
