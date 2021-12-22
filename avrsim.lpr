@@ -133,15 +133,12 @@ var
   var
     i: integer;
   begin
-    result := false;
+    result := fAvr.PausedAtBreak;
     i := high(fBreakpoints);
-    while i > -1 do
+    while not Result and (i > -1) do
     begin
       if fBreakpoints[i] = fAvr.PC then
-      begin
-        i := -1;
-        result := true;
-      end
+        result := true
       else
         dec(i);
     end;
@@ -162,6 +159,8 @@ var
           Sleep(1)
         else
         begin
+          if fAvr.DebuggerAttached then
+            fAvr.clearBreakFlag;
           if checkBPAtStart then
           begin
             if not AtBreakPoint then
@@ -723,6 +722,7 @@ begin
       begin
         gdbserver.debugPrint := Verbose;
         fHandler:=TDebugAVR.Create;
+        fHandler.AVR.DebuggerAttached := true;
         if setRamStart then
           fHandler.AVR.ramStart := StrToInt(RamStart);
         fHandler.AVR.AVR6:=SimulateAVR6;

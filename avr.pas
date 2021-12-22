@@ -75,6 +75,8 @@ type
     fDataWatchBreak: boolean;
     fDataWatchAddress: longword;
     fDataWatchType: byte;
+    fPausedAtBreak: boolean;
+    fDebuggerAttached: boolean;
 
     fRAMPZ, fEIND: word;
 
@@ -136,7 +138,6 @@ type
    protected
     procedure InvalidOpcode; virtual;
     procedure WatchdogReset; virtual;
-    procedure BreakHit; virtual;
     procedure SPM; virtual;
    public
     procedure Step(Count: longint);
@@ -149,6 +150,7 @@ type
     procedure addDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
     procedure removeDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
     procedure clearDataWatchBreak;
+    procedure clearBreakFlag;
 
     constructor Create(AFlashSize: longint = 256*1024; ARamSize: longint = (32*1024 + 256); AEEPROMSize: word = 1024;
       AVR6 : Boolean = false);
@@ -180,6 +182,8 @@ type
     property DataWatchBreak: boolean read fDataWatchBreak;
     property DataWatchAddress: longword read fDataWatchAddress;
     property DataWatchType: byte read fDataWatchType;
+    property PausedAtBreak: boolean read fPausedAtBreak;
+    property DebuggerAttached: boolean read fDebuggerAttached write fDebuggerAttached;
    end;
 
 const
@@ -1016,17 +1020,14 @@ begin
                end;
                $9598:
                begin // BREAK
-                  BreakHit;
-                  new_pc:=fPC;
-                  //fState('break\n');
-               {if (gdb) then begin
-                  // if gdb is on, we break here as in here then
-                  // and we do so until gdb restores the instruction
-                  // that was here before
-                  fState := cpu_StepDone;
-                  new_pc := fPC;
-                  cycle := 0;
-               end;}
+                  if fDebuggerAttached then
+                  begin
+                    // PC does not advance
+                    new_pc := fPC;
+                    cycle := 0;
+                    fPausedAtBreak := true;
+                  end;
+                  // else treat as NOP
                end;
                $95a8:
                begin // WDR
@@ -1728,11 +1729,6 @@ begin
 
 end;
 
-procedure TAvr.BreakHit;
-begin
-
-end;
-
 procedure TAvr.SPM;
 begin
    fFLASH[(fData[R_ZL] shl 8)+fData[R_ZH]] := fData[0];
@@ -1743,7 +1739,11 @@ procedure TAvr.Step(Count: longint);
 var i: longint;
 begin
    for i := 0 to Count - 1 do
+   begin
      fPC := RunOne;
+     if fPausedAtBreak then
+       break;
+   end;
 end;
 
 procedure TAvr.WriteFlash(const Data; Count, Offset: longint);
@@ -1892,6 +1892,11 @@ begin
   fDataWatchBreak := false;
 end;
 
+procedure TAvr.clearBreakFlag;
+begin
+  fPausedAtBreak := false;
+end;
+
 constructor TAvr.Create(AFlashSize: longint; ARamSize: longint;
   AEEPROMSize: word; AVR6: Boolean);
 var
@@ -1906,6 +1911,7 @@ begin
    fPC := 0;
    fExitRequested := false;
    fExitCode := 0;
+   fPausedAtBreak := false;
    StopOnJmpCallToZero := false;
    if AVR6 then
      fPCMask:=$3fffff
