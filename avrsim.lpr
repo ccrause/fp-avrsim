@@ -146,7 +146,6 @@ var
 
   procedure TAVRRunner.Execute;
     var
-      i: integer;
       tmpState: TRunnerState;
       checkBPAtStart: boolean = true;
     begin
