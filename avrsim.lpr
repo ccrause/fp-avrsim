@@ -135,7 +135,7 @@ var
   begin
     result := fAvr.PausedAtBreak;
     i := high(fBreakpoints);
-    while not Result and (i > -1) do
+    while (not Result) and (i > -1) do
     begin
       if fBreakpoints[i] = fAvr.PC then
         result := true
@@ -156,7 +156,7 @@ var
         fLock.Leave;
         if tmpState <> rsRunning then
           Sleep(1)
-        else
+        else if tmpState = rsRunning then
         begin
           if fAvr.DebuggerAttached then
             fAvr.clearBreakFlag;
@@ -190,9 +190,11 @@ var
           if tmpState <> rsRunning then
           begin
             fLock.Enter;
-            fState := tmpState;
-            fLock.Leave;
+            // Do not override potential async Ctrl-C signal
+            if fstate = rsRunning then
+              fState := tmpState;
             TBreakableAVR(fAvr).Notify;
+            fLock.Leave;
           end;
         end;
       end;
@@ -272,11 +274,8 @@ var
   function TAVRRunner.DoCtrlC: TRunnerState;
   begin
     fLock.Enter;
-
     Result := fState;
-
-    if fState = rsRunning then
-      fState := rsCtrlC;
+    fState := rsCtrlC;
     fLock.Leave;
   end;
 
