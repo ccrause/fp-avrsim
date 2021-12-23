@@ -68,6 +68,8 @@ type
     function fTcpReadChar: char;
     function HexDecode(hexCode: string): string;
     procedure HandleRcmd(req: string);
+
+    function LEHexStrToQWord(s: string): QWord;
   protected
     procedure Execute; override;
   public
@@ -382,7 +384,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         begin
           delete(APacket,1,1);
           addr:=strtoint64('$'+Copy2SymbDel(APacket,'='));
-          val:=strtoint64('$'+APacket);
+          val := LEHexStrToQWord(APacket);
 
           if fHandler.WriteReg(addr,val) then
             Respond('OK')
@@ -577,6 +579,25 @@ begin
     Respond(resp)
   else
     HexEncodeRespond(resp);
+end;
+
+function TGDBServer.LEHexStrToQWord(s: string): QWord;
+var
+  bytePos: integer;
+  s2: string;
+begin
+  Result := 0;
+  bytePos := 0;
+  while length(s) > 1 do
+  begin
+    s2 := '$' + copy(s, 1, 2);
+    delete(s, 1, 2);
+    Result := Result + (QWord(StrToInt(s2)) shl bytePos);
+    inc(bytePos, 8);
+  end;
+
+  if length(s) > 0 then
+    Result := Result + (QWord(StrToInt(s2)) shl (bytePos+4));
 end;
 
 procedure TGDBServer.Execute;

@@ -532,50 +532,16 @@ var
     end;
 
   function TDebugAVR.WriteReg(AAddr, AVal: int64): boolean;
-    var
-      tmp: qword;
     begin
       result := true;
       if (AAddr > 0) and (AAddr < 32) then // CPU registers
         fAVR.RAM[AAddr] := byte(AVal)
       else if AAddr = 32 then              // SREG
         fAVR.SREG := byte(AVal)
-      else if AAddr = 33 then              // SPL, only modify low byte of SP
-      begin
-        tmp := fAVR.StackPointer;
-        tmp := (tmp and $FF00) + byte(AVal);
-        fAVR.StackPointer := tmp;
-      end
-      else if AAddr = 34 then              // SPH
-      begin
-        tmp := fAVR.StackPointer;
-        tmp := (tmp and $00FF) + (byte(AVal) shl 8);
-        fAVR.StackPointer := tmp;
-      end
-      else if AAddr = 35 then             // PC0
-      begin
-        tmp := fAVR.PC;
-        tmp := (tmp and $FFFFFF00) + byte(AVal);
-        fAVR.PC := tmp;
-      end
-      else if AAddr = 36 then             // PC1
-      begin
-        tmp := fAVR.PC;
-        tmp := (tmp and $FFFF00FF) + (byte(AVal) shl 8);
-        fAVR.PC := tmp;
-      end
-      else if AAddr = 37 then             // PC2
-      begin
-        tmp := fAVR.PC;
-        tmp := (tmp and $FF00FFFF) + (byte(AVal) shl 16);
-        fAVR.PC := tmp;
-      end
-      else if AAddr = 38 then             // PC3
-      begin
-        tmp := fAVR.PC;
-        tmp := (tmp and $00FFFFFF) + (byte(AVal) shl 24);
-        fAVR.PC := tmp;
-      end
+      else if AAddr = 33 then              // SP
+        fAVR.StackPointer := word(AVal)
+      else if AAddr = 34 then              // PC
+        fAVR.PC := dword(AVal)
       else
         result := false;
     end;
