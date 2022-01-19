@@ -21,6 +21,7 @@ type
     function Continue: TStopReply;
     function SingleStep: TStopReply;
     procedure DoBreak;
+    procedure DoCtrlC;
     procedure StepCycles(ACycles: longint);
 
     function Read(var ABuffer; AAddr,ALen: int64): boolean;
@@ -67,6 +68,8 @@ type
     function fTcpReadChar: char;
     function HexDecode(hexCode: string): string;
     procedure HandleRcmd(req: string);
+
+    function LEHexStrToQWord(s: string): QWord;
   protected
     procedure Execute; override;
   public
@@ -92,6 +95,9 @@ type
     destructor Destroy; override;
   end;
 
+var
+  debugPrint: boolean = false;
+
 implementation
 
 uses
@@ -100,8 +106,6 @@ uses
   {$ENDIF}
 
 
-var
-  debugPrint: boolean = false;
 
 procedure dbgPrint(const c: char);
 begin
@@ -153,7 +157,7 @@ procedure TGDBServer.ReadPacket;
       if c=#$3 then
         begin
           dbgPrintLn('-> <Ctrl-C>');
-          fHandler.DoBreak;
+          fHandler.DoCtrlC;
           Respond(fHandler.GetStatusStr);
         end;
     until (c='$') or terminated;
@@ -380,7 +384,7 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
         begin
           delete(APacket,1,1);
           addr:=strtoint64('$'+Copy2SymbDel(APacket,'='));
-          val:=strtoint64('$'+APacket);
+          val := LEHexStrToQWord(APacket);
 
           if fHandler.WriteReg(addr,val) then
             Respond('OK')
@@ -523,9 +527,8 @@ end;
 
 procedure TGDBServer.HandleRcmd(req: string);
 var
-  s, resp: string;
+  resp: string;
   cmds: TStringList;
-  i: integer;
 begin
   if length(req) = 0 then exit;
 
@@ -533,6 +536,7 @@ begin
   try
     cmds.Delimiter := ' ';
     cmds.DelimitedText := lowercase(HexDecode(req));
+    dbgPrintLn('Rcmd received: ' + cmds.DelimitedText);
 
     resp := 'OK';  // Only override on actual error or alternative output
     case cmds[0] of
@@ -563,7 +567,7 @@ begin
             resp := 'E00';
         end;
       else
-        resp := '';
+        resp := 'E00';
     end;
   finally
     cmds.Free;
@@ -575,6 +579,25 @@ begin
     Respond(resp)
   else
     HexEncodeRespond(resp);
+end;
+
+function TGDBServer.LEHexStrToQWord(s: string): QWord;
+var
+  bytePos: integer;
+  s2: string;
+begin
+  Result := 0;
+  bytePos := 0;
+  while length(s) > 1 do
+  begin
+    s2 := '$' + copy(s, 1, 2);
+    delete(s, 1, 2);
+    Result := Result + (QWord(StrToInt(s2)) shl bytePos);
+    inc(bytePos, 8);
+  end;
+
+  if length(s) > 0 then
+    Result := Result + (QWord(StrToInt(s2)) shl (bytePos+4));
 end;
 
 procedure TGDBServer.Execute;

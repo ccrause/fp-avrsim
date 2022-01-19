@@ -34,7 +34,8 @@ unit avr;
 
 interface
 
-uses sysutils;
+uses
+  sysutils, avrperipheral;
 
 type
    TFlashAddr = dword;
@@ -57,10 +58,15 @@ type
    private
     fData: array of byte;
     fFLASH: array of byte;
+    // Lookup list to indicate which peripheral should manage access
+    fIORegisterToPeripheralReference: array of TBasePeripheral;
     fPC: TFlashAddr;
+    fCycles: QWord;
     fPCMask : TFlashAddr;
     fSREG: array[TSregField] of boolean;
     fState: TAvrState;
+
+    //fPeripheral: TBasePeripheral;
 
     // Lists of memory access watch addresses
     fReadDataWatchpoints: TDataBreakArray;
@@ -69,6 +75,8 @@ type
     fDataWatchBreak: boolean;
     fDataWatchAddress: longword;
     fDataWatchType: byte;
+    fPausedAtBreak: boolean;
+    fDebuggerAttached: boolean;
 
     fRAMPZ, fEIND: word;
 
@@ -77,6 +85,10 @@ type
 
     StopOnJmpCallToZero : boolean;
     fSRamStart: word;
+
+    fEEPROM: TBasePeripheral;
+    fIrqQueue: array of boolean;
+    fPendingIrq: boolean;
 
     function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
@@ -121,22 +133,35 @@ type
 
     function getRamSize: dword;
     function getFlashSize: dword;
+    function getEEPROMSize: word;
+    procedure processInterrupts(var newPC: longword);
    protected
     procedure InvalidOpcode; virtual;
     procedure WatchdogReset; virtual;
-    procedure BreakHit; virtual;
     procedure SPM; virtual;
    public
     procedure Step(Count: longint);
 
     procedure WriteFlash(const Data; Count, Offset: longint);
+    procedure writeEEPROM(const Data: byte; const Address: word);
+    function readEEPROM(const Address: word): byte;
     procedure LoadFlashBinary(const AFilename: string);
 
     procedure addDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
     procedure removeDataWatch(AAddr, ARange: longword; readBreak: boolean; watchType: byte);
     procedure clearDataWatchBreak;
+    procedure clearBreakFlag;
 
-    constructor Create(AFlashSize: longint = 1024*1024; ARamSize: longint = 64*1024;AVR6 : Boolean = false);
+    constructor Create(AFlashSize: longint = 256*1024; ARamSize: longint = (32*1024 + 256); AEEPROMSize: word = 1024;
+      AVR6 : Boolean = false);
+
+    destructor Destroy; override;
+
+    // Call to set an interrupt request flag
+    procedure queueInterrupt(const IrqIndex: byte);
+    // Call to clear an interrupt request flag
+    // E.g. when writing 1 to a a peripheral's interrupt flag bit
+    procedure clearInterrupt(const IrqIndex: byte);
 
     property RAM[AIndex: longint]: byte read GetData write SetData;
     property Flash[AIndex: longint]: byte read GetFLASH write SetFLASH;
@@ -145,6 +170,7 @@ type
     property StackPointer: word read GetSP write SetSP;
 
     property PC: TFlashAddr read fPC write fPC;
+    property ClockTicks: qword read fCycles;
 
     property DoExit: boolean read fExitRequested;
     property ExitCode: byte read fExitCode;
@@ -152,10 +178,12 @@ type
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
     property ramStart: word read fSRamStart write fSRamStart;
-
+    property EEPROMsize: word read getEEPROMSize;
     property DataWatchBreak: boolean read fDataWatchBreak;
     property DataWatchAddress: longword read fDataWatchAddress;
     property DataWatchType: byte read fDataWatchType;
+    property PausedAtBreak: boolean read fPausedAtBreak;
+    property DebuggerAttached: boolean read fDebuggerAttached write fDebuggerAttached;
    end;
 
 const
@@ -166,11 +194,15 @@ const
    R_ZL = $1E;
    R_ZH = $1F;
 
+   // The I/O offset does not apply to avrxmega3 or avrtiny
    R_SPL  = 32+$3D;
    R_SPH  = 32+$3E;
    R_SREG = 32+$3F;
 
 implementation
+
+uses
+  eeprom_periph;
 
 function TAvr.Is32bitInstr(apc: TFlashAddr): boolean;
 var
@@ -216,7 +248,10 @@ end;
 
 function TAvr.GetData(AIndex: longint): byte;
 begin
-   Result := fData[AIndex];
+  if AIndex < length(fData) then
+    Result := fData[AIndex]
+  else
+    Result := 0;
 end;
 
 function TAvr.GetAVR6 : boolean;
@@ -295,7 +330,10 @@ end;
 
 function TAvr.GetIO(r: word; var v: byte): boolean;
 begin
-   result := false;
+  if Assigned(fIORegisterToPeripheralReference[r]) then
+    fIORegisterToPeripheralReference[r].readIO(r, v)
+  else
+    result := false;
 end;
 
 function TAvr.SetIO(r, v: byte): boolean;
@@ -308,7 +346,10 @@ begin
       48..51: write(hexstr(v,2));
       52: StopOnJmpCallToZero:=v<>0;
    else
-      result := false;
+      if Assigned(fIORegisterToPeripheralReference[r]) then
+        fIORegisterToPeripheralReference[r].writeIO(r, v)
+      else
+        result := false;
    end;
 end;
 
@@ -580,6 +621,7 @@ var
    a: TFlashAddr;
    o: smallint;
    branch: boolean;
+   skipInterruptCheck: boolean = false;
 begin
    opcode := (fFLASH[fPC + 1] shl 8) or fFLASH[fPC];
 {$ifdef TRACE_ALL}
@@ -958,6 +1000,9 @@ begin
          if ((opcode and $ff0f) = $9408) then
          begin
             b := (opcode shr 4) and 7;
+            // Execute next instruction before triggering pending interrupts
+            if (b = ord(S_I)) and not fSREG[S_I] then
+              skipInterruptCheck := true;
             //fState('%s%c\n', opcode and $0080 ? 'cl' : 'se', _sreg_bit_name[b]);
             fSREG[TSregField(b)] := ((opcode and $0080) = 0);
          end
@@ -975,17 +1020,14 @@ begin
                end;
                $9598:
                begin // BREAK
-                  BreakHit;
-                  new_pc:=fPC;
-                  //fState('break\n');
-               {if (gdb) then begin
-                  // if gdb is on, we break here as in here then
-                  // and we do so until gdb restores the instruction
-                  // that was here before
-                  fState := cpu_StepDone;
-                  new_pc := fPC;
-                  cycle := 0;
-               end;}
+                  if fDebuggerAttached then
+                  begin
+                    // PC does not advance
+                    new_pc := fPC;
+                    cycle := 0;
+                    fPausedAtBreak := true;
+                  end;
+                  // else treat as NOP
                end;
                $95a8:
                begin // WDR
@@ -1041,7 +1083,10 @@ begin
                   else
                     new_pc := Pop24() shl 1;
                   if (opcode and $10) <> 0 then // reti
+                  begin
                      fSREG[S_I] := true;
+                     skipInterruptCheck := true;
+                  end;
                   cycle := cycle + 3;
                   //fState('ret%s\n', opcode and $10 ? 'i' : '');
                end;
@@ -1636,7 +1681,13 @@ begin
       else
          InvalidOpcode();
    end;
-   cycle := cycle + cycle;
+   Inc(fCycles, cycle);
+
+   // Service peripherals
+   fEEPROM.updateCPUClock(fCycles);
+   // Execute next instruction before triggering pending interrupts
+   if fSREG[S_I] and fPendingIrq and not skipInterruptCheck then
+     processInterrupts(new_pc);
    Result := new_pc;
 end;
 
@@ -1650,12 +1701,30 @@ begin
   result := length(fFLASH);
 end;
 
-procedure TAvr.WatchdogReset;
+function TAvr.getEEPROMSize: word;
 begin
-
+  if Assigned(fEEPROM) then
+    result := TEEPROM(fEEPROM).size
+  else
+     result := 0;
 end;
 
-procedure TAvr.BreakHit;
+procedure TAvr.queueInterrupt(const IrqIndex: byte);
+begin
+  if length(fIrqQueue) <= IrqIndex then
+    SetLength(fIrqQueue, IrqIndex+1);
+  fIrqQueue[IrqIndex] := true;
+  fPendingIrq := true;
+end;
+
+procedure TAvr.clearInterrupt(const IrqIndex: byte);
+begin
+  if length(fIrqQueue) <= IrqIndex then
+    SetLength(fIrqQueue, IrqIndex+1);
+  fIrqQueue[IrqIndex] := false;
+end;
+
+procedure TAvr.WatchdogReset;
 begin
 
 end;
@@ -1668,13 +1737,12 @@ end;
 
 procedure TAvr.Step(Count: longint);
 var i: longint;
-    newPc: TFlashAddr;
 begin
    for i := 0 to Count - 1 do
    begin
-      newPc := RunOne;
-      //writeln(inttohex(fPC, PopCnt(fPCMask) div 4)+'->', IntToHex(newPc, PopCnt(fPCMask) div 4));
-      fPC := newPc;
+     fPC := RunOne;
+     if fPausedAtBreak then
+       break;
    end;
 end;
 
@@ -1683,16 +1751,73 @@ begin
    move(Data, fFLASH[Offset], Count);
 end;
 
+procedure TAvr.writeEEPROM(const Data: byte; const Address: word);
+begin
+   // Crunch data through EEPROM peripheral programming sequence
+   // Set data
+   fEEPROM.writeIO($40, Data);
+   // Set address
+   fEEPROM.writeIO($41, lo(Address));
+   fEEPROM.writeIO($42, hi(Address));
+   // Enable EEPROM master write bit
+   fEEPROM.writeIO($3F, 4);
+   // Trigger write bit
+   fEEPROM.writeIO($3F, 2);
+end;
+
+function TAvr.readEEPROM(const Address: word): byte;
+begin
+   // Crunch data through EEPROM peripheral read sequence
+   // Should wait in case EEPE is set, but at the moment this isn't implemented / no wait necessary
+   // Set address
+   fEEPROM.writeIO($41, lo(Address));
+   fEEPROM.writeIO($42, hi(Address));
+   // Set read bit
+   fEEPROM.writeIO($3F, 1);
+   // Read data register
+   fEEPROM.readIO($40, result);
+end;
+
 procedure TAvr.LoadFlashBinary(const AFilename: string);
-var fil: File;
+var
+  fil: File;
+  b: byte;
+  count: word;
+  sz: integer;
 begin
    if FileExists(AFilename) then
    begin
       AssignFile(fil, AFilename);
       reset(fil,1);
 
-      BlockRead(fil, fFLASH[0], FileSize(fil));
+      // Read up to flash end only - rest may be EEPROM content
 
+      sz := FileSize(fil);
+      if sz > length(fFLASH) then
+        sz := length(fFLASH);
+      BlockRead(fil, fFLASH[0], sz);
+
+      // Read EEPROM, assume fPeripheral can only be EEPROM for now
+      if (FileSize(fil) >= $810000) and Assigned(fEEPROM) then
+      begin
+        Seek(fil, $810000);
+        count := 0;
+        repeat
+          BlockRead(fil, b, 1);
+          // Now crunch data through EEPROM peripheral following programming sequence
+          // Set data
+          fEEPROM.writeIO($40, b);
+          // Set address
+          fEEPROM.writeIO($41, lo(count));
+          fEEPROM.writeIO($42, hi(count));
+          // Enable EEPROM master write bit
+          fEEPROM.writeIO($3F, 4);
+          // Trigger write bit
+          fEEPROM.writeIO($3F, 2);
+
+          inc(count);
+        until EOF(fil) or (count >= 1024);  // hardcoded EEPROM size!
+      end;
       CloseFile(fil);
    end;
 end;
@@ -1767,7 +1892,16 @@ begin
   fDataWatchBreak := false;
 end;
 
-constructor TAvr.Create(AFlashSize : longint; ARamSize : longint; AVR6 : Boolean);
+procedure TAvr.clearBreakFlag;
+begin
+  fPausedAtBreak := false;
+end;
+
+constructor TAvr.Create(AFlashSize: longint; ARamSize: longint;
+  AEEPROMSize: word; AVR6: Boolean);
+var
+  tmpArray: TBytes;
+  i: integer;
 begin
    inherited Create;
 
@@ -1777,6 +1911,7 @@ begin
    fPC := 0;
    fExitRequested := false;
    fExitCode := 0;
+   fPausedAtBreak := false;
    StopOnJmpCallToZero := false;
    if AVR6 then
      fPCMask:=$3fffff
@@ -1784,6 +1919,57 @@ begin
      fPCMask:=$ffff;
 
    fSRamStart := $100;  // previous hardcoded value, change to specific MCU value
+
+   fEEPROM := TEEPROM.Create(self, AEEPROMSize);
+   // This also includes 32 core registers...
+   SetLength(fIORegisterToPeripheralReference, fSRamStart);
+   fEEPROM.registerIORegisters(tmpArray);
+   for i := low(tmpArray) to high(tmpArray) do
+     if (tmpArray[i] < fSRamStart) and (tmpArray[i] > 31) then
+       fIORegisterToPeripheralReference[tmpArray[i]] := fEEPROM
+     else
+       writeln('Unsupported IO register address: $', HexStr(tmpArray[i], 2));
+end;
+
+destructor TAvr.Destroy;
+begin
+  inherited Destroy;
+  if Assigned(fEEPROM) then
+    fEEPROM.Free;
+end;
+
+procedure TAvr.processInterrupts(var newPC: longword);
+var
+  i, index: word;
+begin
+  index := 0;
+  i := 0;
+  while (index = 0) and (i < length(fIrqQueue)) do
+  begin
+    if fIrqQueue[i] then
+      index := i;
+    inc(i);
+  end;
+  if (index = 0) then
+    fPendingIrq := false
+  else
+  begin
+    fSREG[S_I] := false;
+    // push next instruction's PC as return address
+    // Todo: check if 2/3 byte PC and push accordingly
+    Push16(newPC shr 1);
+    inc(fCycles, 4);
+    if flashSize > 8192 then
+    begin
+      newPC := index * 4;
+      inc(fCycles, 3);
+    end
+    else
+    begin
+      newPC := index * 2;
+      inc(fCycles, 2);
+    end;
+  end;
 end;
 
 end.
