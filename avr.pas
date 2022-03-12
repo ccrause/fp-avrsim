@@ -1317,7 +1317,7 @@ begin
                      $9402:
                      begin // SWAP – Swap Nibbles
                         r := (opcode shr 4) and $1f;
-                        res := (fData[r] shr 4) or (fData[r] shl 4);
+                        res := (fData[r] shr 4) or byte(fData[r] shl 4);
                         //fState('swap %s[%02x] := %02x\n', avr_regname(r), fData[r], res);
                         SetReg(r, res);
                      end;
