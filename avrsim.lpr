@@ -581,7 +581,11 @@ var
   begin
     SetLength(buf, len);
     FillChar(buf[0], length(buf), $FF);
-    fAVR.WriteFlash(buf[0], length(buf), addr);
+    if addr < $800000 then
+      fAVR.WriteFlash(buf[0], length(buf), addr)
+    // also check for EEPROM writes, for gdb support
+    else if (addr >= $810000) and (addr < $820000) then
+      fAVR.writeEEPROM(buf[0], length(buf), addr and $FFFF);
   end;
 
   constructor TDebugAVR.Create;

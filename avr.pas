@@ -56,7 +56,13 @@ type
 
    TAvr = class
    private
-    fData: array of byte;
+    // Data locations grouped per functionality, e.g. CPU registers, peripheral registers, SRAM, EEPROM, flash etc.
+    // Mapped addresses decoded to read from applicable data storage
+    // TODO: make all array dynamic and size according to controller specifications
+    fCpuRegisters: array[0..31] of byte;
+    fIoRegisters: array[0..$FFF] of byte;  // Maximum for megaAVR-0 series
+
+    fData: array of byte;  // all data space, including CPU registers, but not flash (for xmega3)
     fFLASH: array of byte;
     // Lookup list to indicate which peripheral should manage access
     fIORegisterToPeripheralReference: array of TBasePeripheral;
@@ -90,6 +96,13 @@ type
     fIrqQueue: array of boolean;
     fPendingIrq: boolean;
 
+    // avrtiny speficic
+    has7bitLdsSts: boolean;
+    // I/O registers offset in data space:
+    // Classic AVR8: 32 (after CPU registers)
+    // avrtiny and avrxmega3: 0 (CPU registers not accessible in data space)
+    IORegsOffset: integer;
+
     function GetAVR6 : boolean;
     function GetData(AIndex: longint): byte;
     function GetFlash(AIndex: longint): byte;
@@ -109,7 +122,7 @@ type
 
     function GetIO(r: word; var v: byte): boolean;
     function SetIO(r, v: byte): boolean;
-    procedure SetReg(r, v: byte);inline;
+    procedure SetReg(r, v: byte);//inline;
 
     function GetRAM(addr: word): byte;
     procedure SetRAM(addr: word; v: byte);
@@ -143,7 +156,8 @@ type
     procedure Step(Count: longint);
 
     procedure WriteFlash(const Data; Count, Offset: longint);
-    procedure writeEEPROM(const Data: byte; const Address: word);
+    procedure WriteEEPROM(const Data; Count, Offset: longint);
+    procedure WriteEEPROM(const Data: byte; const Address: word);
     function readEEPROM(const Address: word): byte;
     procedure LoadFlashBinary(const AFilename: string);
 
@@ -330,7 +344,8 @@ end;
 
 function TAvr.GetIO(r: word; var v: byte): boolean;
 begin
-  if Assigned(fIORegisterToPeripheralReference[r]) then
+   result := true;
+   if Assigned(fIORegisterToPeripheralReference[r]) then
     fIORegisterToPeripheralReference[r].readIO(r, v)
   else
     result := false;
@@ -353,7 +368,7 @@ begin
    end;
 end;
 
-procedure TAvr.SetReg(r, v: byte);inline;
+procedure TAvr.SetReg(r, v: byte);//inline;
 begin
    //REG_TOUCH(r);
    if (r = R_SREG) then
@@ -424,6 +439,7 @@ begin
    else if ((addr > 31) and (addr < fSRamStart)) then
    begin
       r:=0;
+      // If a peripheral register exists at this address exit, copy register value to fData
       if GetIO(addr, r) then
          fData[Addr] := r;
 
@@ -953,6 +969,24 @@ begin
       $a000,
       $8000:
       begin
+         // avrtiny replaces LDD / STD with LDS/STS (7 bit)
+         if has7bitLdsSts and (opcode and $a000 = $a000)then
+         begin
+           // LDS(7 bit) 1010 0kkk dddd kkkk
+           // STS(7 bit) 1010 1kkk dddd kkkk
+           r := (opcode shr 4) and $0f;
+           d := (opcode and $0f) or (((opcode shr 9) and 3) shl 4);
+           if opcode and $0100 = 0 then
+             d := d or $80
+           else
+             d := d or $40;
+           Inc(cycle); // 2 cycles
+            if opcode and $0800 = 0 then  // LDS
+              SetReg(r, GetRAM(d))
+            else
+              SetRAM(d, fData[r]);
+         end
+         else
          case (opcode and $d008) of
             $a000,
             $8000:
@@ -1751,7 +1785,20 @@ begin
    move(Data, fFLASH[Offset], Count);
 end;
 
-procedure TAvr.writeEEPROM(const Data: byte; const Address: word);
+procedure TAvr.WriteEEPROM(const Data; Count, Offset: longint);
+var
+  i: integer;
+  p: PByte;
+begin
+  p := @Data;
+  for i := 0 to Count-1 do
+  begin
+    WriteEEPROM(p^, Offset + i);
+    inc(p);
+  end;
+end;
+
+procedure TAvr.WriteEEPROM(const Data: byte; const Address: word);
 begin
    // Crunch data through EEPROM peripheral programming sequence
    // Set data
@@ -1908,6 +1955,7 @@ begin
    setlength(fFLASH, AFlashSize);
    setlength(fData, ARamSize);
 
+   has7bitLdsSts := false;
    fPC := 0;
    fExitRequested := false;
    fExitCode := 0;

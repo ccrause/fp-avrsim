@@ -26,18 +26,18 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="C:\Users\jepjoh2\Desktop\varme-emulator\main.bin"/>
+        <CommandLineParams Value="-d12345 -v"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="C:\Users\jepjoh2\Desktop\varme-emulator\main.bin"/>
+            <CommandLineParams Value="-d12345 -v"/>
           </local>
         </Mode0>
       </Modes>
     </RunParams>
-    <Units Count="3">
+    <Units Count="6">
       <Unit0>
         <Filename Value="avrsim.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -50,6 +50,18 @@
         <Filename Value="gdbserver.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit2>
+      <Unit3>
+        <Filename Value="controllers.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="avrperipheral.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="timers.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit5>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -62,14 +74,23 @@
       <IncludeFiles Value="$(ProjOutDir)"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <Parsing>
+      <SyntaxOptions>
+        <IncludeAssertionCode Value="True"/>
+      </SyntaxOptions>
+    </Parsing>
     <CodeGeneration>
-      <Optimizations>
-        <OptimizationLevel Value="4"/>
-      </Optimizations>
+      <Checks>
+        <IOChecks Value="True"/>
+        <RangeChecks Value="True"/>
+        <OverflowChecks Value="True"/>
+        <StackChecks Value="True"/>
+      </Checks>
+      <VerifyObjMethodCallValidity Value="True"/>
     </CodeGeneration>
     <Linking>
       <Debugging>
-        <GenerateDebugInfo Value="False"/>
+        <DebugInfoType Value="dsDwarf2Set"/>
       </Debugging>
     </Linking>
   </CompilerOptions>
