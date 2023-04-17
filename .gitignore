@@ -1,0 +1,10 @@
+*.o
+*.exe
+*.bak
+*.ppu
+*.lps
+fp.cfg
+fp.dsk
+fp.ini
+backup/
+lib/

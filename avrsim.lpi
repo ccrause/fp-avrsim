@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="10"/>
+    <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
       <Flags>
         <MainUnitHasCreateFormStatements Value="False"/>
         <MainUnitHasTitleStatement Value="False"/>
+        <MainUnitHasScaledStatement Value="False"/>
+        <CompatibilityMode Value="True"/>
       </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <Title Value="avrsim"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
@@ -25,9 +26,16 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <FormatVersion Value="1"/>
         <CommandLineParams Value="C:\Users\jepjoh2\Desktop\varme-emulator\main.bin"/>
       </local>
+      <FormatVersion Value="2"/>
+      <Modes Count="1">
+        <Mode0 Name="default">
+          <local>
+            <CommandLineParams Value="C:\Users\jepjoh2\Desktop\varme-emulator\main.bin"/>
+          </local>
+        </Mode0>
+      </Modes>
     </RunParams>
     <Units Count="3">
       <Unit0>

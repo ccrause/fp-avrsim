@@ -1,3 +1,5 @@
+{$mode objfpc}
+
 unit eeprom_periph;
 
 interface

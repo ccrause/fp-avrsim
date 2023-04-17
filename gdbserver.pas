@@ -102,7 +102,7 @@ implementation
 
 uses
   {$IFNDEF WINDOWS}BaseUnix, sockets;
-  {$ELSE}winsock2, windows;
+  {$ELSE}sockets, windows, winsock2;
   {$ENDIF}
 
 
@@ -132,14 +132,9 @@ begin
   end;
 end;
 
-function AddrToString(Addr: TSockAddr): String;
+function AddrToString(Addr: Sockets.TSockAddr): String;
 begin
-  {$IFNDEF WINDOWS}
   Result := NetAddrToStr(Addr.sin_addr);
-  {$ELSE}
-  Result := inet_ntoa(Addr.sin_addr);
-  {$ENDIF}
-
   Result := Result  + ':' + IntToStr(Addr.sin_port);
 end;
 
