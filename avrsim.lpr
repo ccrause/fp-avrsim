@@ -11,10 +11,10 @@ uses {$ifdef UNIX}
   gdbserver;
 
 const
-  VMA_FLASH:longword	 =  $00000000;
-  VMA_RAM:longword		 =  $00800000;
-  VMA_EEPROM:longword  =  $00810000;
-  VMA_FUSES:longword   =  $00820000;
+  VMA_FLASH:longword  = $00000000;
+  VMA_RAM:longword    = $00800000;
+  VMA_EEPROM:longword = $00810000;
+  VMA_FUSES:longword  = $00820000;
 
 type
   TRunnerState = (rsBreak, rsWatchBreak, rsCtrlC, rsRunning);
@@ -457,11 +457,15 @@ var
       old: TRunnerState;
       i: Integer;
     begin
-      old:=fRunner.DoBreak;
+      old := fRunner.DoBreak;
 
-      result:=true;
-      for i := 0 to ALen-1 do
-        pbyte(@Abuffer)[i]:=ReadByte(AAddr+i);
+      // Ensure virtual address is within limits of AVR memory map
+      result := (AAddr > 0) and (AAddr < (VMA_FUSES + $FFFF));
+      if result then
+      begin
+        for i := 0 to ALen-1 do
+          pbyte(@Abuffer)[i] := ReadByte(longword(AAddr+i));
+      end;
 
       fRunner.UnBreak(old);
     end;
