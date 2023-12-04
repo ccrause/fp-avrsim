@@ -957,20 +957,34 @@ begin
             $a000,
             $8000:
             begin // LD (LDD) or ST (STD) – Load/Store Indirect using Z 10q0 qq0r rrrr 0qqq
-               v := fData[R_ZL] or (fData[R_ZH] shl 8);
-               r := (opcode shr 4) and $1f;
-               q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
-               if (opcode and $0200) <> 0 then
+               // This check overlaps with the 16 bit LDS/STS instructions of reduced core tiny
+               // Todo: only activate this check if debugging a tiny
+               if false and ((opcode and $A000) = $A000) then
                begin
-                  //fState('st (Z+%d[%04x]), %s[%02x]\n', q, v+q, avr_regname(r), fData[r]);
-                  SetRAM(v + q, fData[r]);
+                 get_k_r16(opcode, r, q);
+                 q := q and $7F;
+                 if (opcode and $800) = 0 then // LDS
+                   SetReg(r, GetRAM(q))
+                 else                          // STS
+                   SetRAM(q, fData[r]);
                end
                else
                begin
-                  //fState('ld %s, (Z+%d[%04x]):=[%02x]\n', avr_regname(r), q, v+q, fData[v+q]);
-                  SetReg(r, GetRAM(v + q));
-               end;
-               Inc(cycle); // 2 cycles, 3 for tinyavr
+                 v := fData[R_ZL] or (fData[R_ZH] shl 8);
+                 r := (opcode shr 4) and $1f;
+                 q := ((opcode and $2000) shr 8) or ((opcode and $0c00) shr 7) or (opcode and $7);
+                 if (opcode and $0200) <> 0 then
+                 begin
+                    //fState('st (Z+%d[%04x]), %s[%02x]\n', q, v+q, avr_regname(r), fData[r]);
+                    SetRAM(v + q, fData[r]);
+                 end
+                 else
+                 begin
+                    //fState('ld %s, (Z+%d[%04x]):=[%02x]\n', avr_regname(r), q, v+q, fData[v+q]);
+                    SetReg(r, GetRAM(v + q));
+                 end;
+                 Inc(cycle); // 2 cycles, 3 for tinyavr
+               end
             end;
             $a008,
             $8008:
