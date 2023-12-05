@@ -85,6 +85,7 @@ type
 
     StopOnJmpCallToZero : boolean;
     fSRamStart: word;
+    fIoStart: word;
 
     fEEPROM: TBasePeripheral;
     fIrqQueue: array of boolean;
@@ -178,6 +179,7 @@ type
     property flashSize: dword read getFlashSize;
     property ramSize: dword read getRamSize;
     property ramStart: word read fSRamStart write fSRamStart;
+    property ioStart: word read fIoStart write fIoStart;
     property EEPROMsize: word read getEEPROMSize;
     property DataWatchBreak: boolean read fDataWatchBreak;
     property DataWatchAddress: longword read fDataWatchAddress;
@@ -195,9 +197,9 @@ const
    R_ZH = $1F;
 
    // The I/O offset does not apply to avrxmega3 or avrtiny
-   R_SPL  = 32+$3D;
-   R_SPH  = 32+$3E;
-   R_SREG = 32+$3F;
+   R_SPL  = $3D;
+   R_SPH  = $3E;
+   R_SREG = $3F;
 
 implementation
 
@@ -356,13 +358,13 @@ end;
 procedure TAvr.SetReg(r, v: byte);inline;
 begin
    //REG_TOUCH(r);
-   if (r = R_SREG) then
+   if (r = (R_SREG+fIoStart)) then
    begin
-      fData[R_SREG] := v;
+      fData[R_SREG+fIoStart] := v;
       // unsplit the fSREG
       WriteSREG(v);
    end;
-   if (r > 31) then
+   if (r >= IoStart) then
    begin
       if not SetIO(r,v) then
          fData[r] := v;
@@ -386,13 +388,13 @@ end;
  }
 function TAvr.GetSP: word;
 begin
-   Result := fData[R_SPL] or (fData[R_SPH] shl 8);
+   Result := fData[R_SPL+fIoStart] or (fData[R_SPH+fIoStart] shl 8);
 end;
 
 procedure TAvr.SetSP(sp: word);
 begin
-   SetReg(R_SPL, byte(sp));
-   SetReg(R_SPH, byte(sp shr 8));
+   SetReg(R_SPL+fIoStart, byte(sp));
+   SetReg(R_SPH+fIoStart, byte(sp shr 8));
 end;
 
 {
@@ -413,15 +415,15 @@ function TAvr.GetRAM(addr: word): byte;
 var
    r: byte;
 begin
-   if (addr = R_SREG) then
+   if (addr = R_SREG+fIoStart) then
    begin
       {
        * fSREG is special it's reconstructed when read
        * while the core itself uses the 'shortcut' array
        }
-      ReadSREG(fData[R_SREG]);
+      ReadSREG(fData[R_SREG+fIoStart]);
    end
-   else if ((addr > 31) and (addr < fSRamStart)) then
+   else if ((addr >= fIoStart) and (addr < fSRamStart)) then
    begin
       r:=0;
       if GetIO(addr, r) then
@@ -959,10 +961,15 @@ begin
             begin // LD (LDD) or ST (STD) – Load/Store Indirect using Z 10q0 qq0r rrrr 0qqq
                // This check overlaps with the 16 bit LDS/STS instructions of reduced core tiny
                // Todo: only activate this check if debugging a tiny
-               if false and ((opcode and $A000) = $A000) then
+               if (ramStart <= $40) and ((opcode and $A000) = $A000) then
                begin
-                 get_k_r16(opcode, r, q);
-                 q := q and $7F;
+                 r := 16 + ((opcode shr 4) and $0F);
+                 q := ((opcode shr 5) and $30) or (opcode and $0F);
+                 if (opcode and $0100) = 0  then
+                   q := q or $80
+                 else
+                   q := q or $40;
+
                  if (opcode and $800) = 0 then // LDS
                    SetReg(r, GetRAM(q))
                  else                          // STS
@@ -1556,14 +1563,14 @@ begin
             $b800:
             begin // OUT A,Rr 1011 1AAr rrrr AAAA
                r := (opcode shr 4) and $1f;
-               d := ((((opcode shr 9) and 3) shl 4) or ((opcode) and $f)) + 32;
+               d := (((opcode shr 5) and $30) or (opcode and $f)) + fIoStart;
                //fState('out %s, %s[%02x]\n', avr_regname(A), avr_regname(r), fData[r]);
                SetRAM(d, fData[r]);
             end;
             $b000:
             begin // IN Rd,A 1011 0AAr rrrr AAAA
                r := (opcode shr 4) and $1f;
-               d := ((((opcode shr 9) and 3) shl 4) or ((opcode) and $f)) + 32;
+               d := ((((opcode shr 9) and 3) shl 4) or ((opcode) and $f)) + fIoStart;
                //fState('in %s, %s[%02x]\n', avr_regname(r), avr_regname(A), fData[A]);
                SetReg(r, GetRAM(d));
             end;
@@ -1933,13 +1940,14 @@ begin
      fPCMask:=$ffff;
 
    fSRamStart := $100;  // previous hardcoded value, change to specific MCU value
+   fIoStart := 32;      // previous hardcoded value, change for avrxmega or AVRrc
 
    fEEPROM := TEEPROM.Create(self, AEEPROMSize);
    // This also includes 32 core registers...
-   SetLength(fIORegisterToPeripheralReference, fSRamStart);
+   SetLength(fIORegisterToPeripheralReference, fSRamStart - fIoStart);
    fEEPROM.registerIORegisters(tmpArray);
    for i := low(tmpArray) to high(tmpArray) do
-     if (tmpArray[i] < fSRamStart) and (tmpArray[i] > 31) then
+     if (tmpArray[i] < fSRamStart) and (tmpArray[i] >= IoStart) then
        fIORegisterToPeripheralReference[tmpArray[i]] := fEEPROM
      else
        writeln('Unsupported IO register address: $', HexStr(tmpArray[i], 2));

@@ -631,8 +631,8 @@ var
   RunInDebugger,
   SimulateAVR6: Boolean;
   i : Integer;
-  setRamStart: boolean;
-  RamStart: string;
+  setRamStart, setIOStart: boolean;
+  RamStart, IOStart: string;
 
 procedure InvalidCommandline;
   begin
@@ -645,6 +645,7 @@ begin
   RunInDebugger:=false;
   SimulateAVR6:=false;
   setRamStart := false;
+  setIOStart := false;
   for i:=1 to ParamCount do
     case Copy(ParamStr(i),1,2) of
       '-d':
@@ -652,6 +653,12 @@ begin
           RunInDebugger:=true;
           port:=ParamStr(i);
           delete(port,1,2);
+        end;
+      '-i':
+        begin
+          setIOStart := true;
+          IOStart := ParamStr(i);
+          delete(IOStart, 1, 2);
         end;
       '-6':
         SimulateAVR6:=true;
@@ -693,6 +700,8 @@ begin
         fHandler.AVR.DebuggerAttached := true;
         if setRamStart then
           fHandler.AVR.ramStart := StrToInt(RamStart);
+        if setIOStart then
+          fHandler.AVR.ioStart := StrToInt(IOStart);
         fHandler.AVR.AVR6:=SimulateAVR6;
 
         try
