@@ -29,6 +29,7 @@ type
     function ReadReg(AAddr: int64; var AVal: int64): boolean;
     function WriteReg(AAddr, AVal: int64): boolean;
     function GetRegisterString: string;
+    procedure SetRegisters(ARegs: string);
 
     procedure SendNotification(AEvent: TNotification);
     function SupportedOptions: string;
@@ -327,6 +328,12 @@ function TGDBServer.HandlePacket(APacket: string): boolean;
       'g':
         begin
           Respond(fHandler.GetRegisterString);
+        end;
+      'G':
+        begin
+          delete(APacket,1,1);
+          fHandler.SetRegisters(APacket);
+          Respond('OK');
         end;
       'H':
         begin

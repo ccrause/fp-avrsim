@@ -79,6 +79,7 @@ type
     procedure DoBreak;
     procedure DoCtrlC;
     function GetRegisterString: string;
+    procedure SetRegisters(ARegs: string);
     function GetStatus: TStopReply;
     function GetStatusStr: string;
     function Read(var ABuffer; AAddr, ALen: int64): boolean;
@@ -392,6 +393,66 @@ var
 
       fRunner.UnBreak(old);
     end;
+
+  procedure TDebugAVR.SetRegisters(ARegs: string);
+  var
+    old: TRunnerState;
+    i, len, err: Integer;
+    v: dword;
+    s: string;
+  begin
+    old:=fRunner.DoBreak;
+
+    len := length(ARegs);
+    i := 0;
+    while (len > 1) and (i < 32) do
+    begin
+      s := '$' + copy(ARegs, 1+2*i, 2);
+      val(s, v, err);
+
+      // The specification mentions than unknown/unavailable data
+      // should be representaed by literal 'xx'.
+      // So if there is a numeric conversion error, just skip and continue.
+      if err = 0 then
+        fAVR.RAM[i] := v;
+
+      inc(i);
+      dec(len, 2);
+    end;
+
+    // SREG
+    if (len > 1) then
+    begin
+      s := '$' + copy(ARegs, 1+2*i, 2);
+      val(s, v, err);
+      if err = 0 then
+        fAVR.SREG := v;
+      inc(i);
+      dec(len, 2)
+    end;
+
+    // SP
+    if (len > 3) then
+    begin
+      s := '$' + copy(ARegs, 1+2*i, 4);
+      val(s, v, err);
+      if err = 0 then
+        fAVR.StackPointer := BEtoN(word(v));
+      inc(i, 2);
+      dec(len, 4)
+    end;
+
+    // PC
+    if (len >= 7) then
+    begin
+      s := '$' + copy(ARegs, 1+2*i, 8);
+      val(s, v, err);
+      if err = 0 then
+        fAVR.PC := BEtoN(v);
+    end;
+
+    fRunner.UnBreak(old);
+  end;
 
   function TDebugAVR.GetStatus: TStopReply;
     var
