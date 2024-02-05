@@ -692,6 +692,9 @@ procedure TGDBServerListener.Execute;
   begin
     fServer := TInetServer.Create(fPort);
     fServer.AcceptIdleTimeOut := 100;
+    { On posix, ReuseAddress most be set to ensure socket can be re-opened
+      without waiting for a time-out. }
+    fServer.ReuseAddress := true;
     try
       fServer.MaxConnections := 1;
       fServer.OnConnectQuery := @FQueryConnect;
