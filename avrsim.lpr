@@ -521,7 +521,7 @@ var
       old := fRunner.DoBreak;
 
       // Ensure virtual address is within limits of AVR memory map
-      result := (AAddr > 0) and (AAddr < (VMA_FUSES + $FFFF));
+      result := (AAddr >= 0) and (AAddr < (VMA_FUSES + $FFFF));
       if result then
       begin
         for i := 0 to ALen-1 do
@@ -599,7 +599,7 @@ var
   function TDebugAVR.WriteReg(AAddr, AVal: int64): boolean;
     begin
       result := true;
-      if (AAddr > 0) and (AAddr < 32) then // CPU registers
+      if (AAddr >= 0) and (AAddr < 32) then // CPU registers
         fAVR.RAM[AAddr] := byte(AVal)
       else if AAddr = 32 then              // SREG
         fAVR.SREG := byte(AVal)
