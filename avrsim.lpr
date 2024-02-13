@@ -665,7 +665,7 @@ var
                       '</memory>'+
                       '<memory type="ram" start="0x800000" length="0x%.4x"/>'+   // Second param: end of mapped data space
                      // EEPROM
-                      '<memory type="flash" start="0x810000" length="0x%.4x">'+  // Third param: EEPROM size
+                      '<memory type="eeprom" start="0x810000" length="0x%.4x">'+  // Third param: EEPROM size
                         '<property name="blocksize">0x04</property>'+
                       '</memory>'+
                     '</memory-map>';
