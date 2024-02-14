@@ -664,8 +664,8 @@ var
                         '<property name="blocksize">0x100</property>'+
                       '</memory>'+
                       '<memory type="ram" start="0x800000" length="0x%.4x"/>'+   // Second param: end of mapped data space
-                     // EEPROM
-                      '<memory type="eeprom" start="0x810000" length="0x%.4x">'+  // Third param: EEPROM size
+                      // type="eerpom" is not recognized by gdb, but the address range needs to be declared for programming to work
+                      '<memory start="0x810000" length="0x%.4x">'+
                         '<property name="blocksize">0x04</property>'+
                       '</memory>'+
                     '</memory-map>';
