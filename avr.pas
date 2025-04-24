@@ -1480,7 +1480,7 @@ begin
                               rdh := fData[r + 1];
                               res32 := rdl or (rdh shl 8);
                               //fState('sbiw %s:%s[%04x], $%02x\n', avr_regname(r), avr_regname(r+1), res, k);
-                              res32 := res32 - k;
+                              res32 := longword(integer(res32) - k);
                               SetReg(r + 1, byte(res32 shr 8));
                               SetReg(r, byte(res32));
                               fSREG[S_V] := odd(rdh shr 7) and (odd(not (res32 shr 15)));
