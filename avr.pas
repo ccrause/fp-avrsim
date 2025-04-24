@@ -332,10 +332,23 @@ end;
 
 function TAvr.GetIO(r: word; var v: byte): boolean;
 begin
+  Result := true;
   if Assigned(fIORegisterToPeripheralReference[r]) then
     fIORegisterToPeripheralReference[r].readIO(r, v)
   else
-    result := false;
+  begin
+    case r of
+      $21: v := fExitCode;               // EXITCODEREG
+      $22: if fExitRequested then v := 1 // HALTREQUEST
+           else v := 0;
+      $23: v := byte(fCycles);           // CYCLECOUNT LSB
+      $24: v := byte(fCycles shr 8);     //             .
+      $25: v := byte(fCycles shr 16);    //             .
+      $26: v := byte(fCycles shr 24);    // CYCLECOUNT MSB
+      else
+        result := false;
+    end;
+  end;
 end;
 
 function TAvr.SetIO(r, v: byte): boolean;
