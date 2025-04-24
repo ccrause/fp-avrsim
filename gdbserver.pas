@@ -188,7 +188,10 @@ procedure TGDBServer.ReadPacket;
 
     if calcSum=cksum then
       begin
-        fSock.WriteByte(byte('+'));  dbgPrintLn('<- +');
+        try
+          fSock.WriteByte(byte('+'));  dbgPrintLn('<- +');
+        except
+        end;
         if not HandlePacket(s) then
         begin
           Respond('');
