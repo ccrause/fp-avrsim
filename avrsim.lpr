@@ -695,25 +695,47 @@ var
   setRamStart, setIOStart: boolean;
   RamStart, IOStart: string;
 
+procedure printCommandlineHelp;
+  begin
+    writeln('Usage: avrsim [-d<port>] [-6] [-v] [-s<startAddress>] <bin-file>');
+    writeln('  -6         - Use a 22 bit wide PC. Defaults to 16 wide bit PC.');
+    writeln('  -d<port>   - Start a GDB server and listen on port <port> for a remote connection.');
+    writeln('  -h         - Print this help message and exit.');
+    writeln('  -i<addr>   - Override I/O starting address. Defaults to 32.');
+    writeln('  -s<addr>   - Override RAM starting address. Defaults to 256.');
+    writeln('  -v         - Verbose output.');
+    writeln('  <bin-file> - Binary image of firmware to load.');
+  end;
+
 procedure InvalidCommandline;
   begin
     writeln('Simulator: Invalid command line');
-    writeln('Usage: avrsim [-d<port>] [-6] [-v] [-s<startAddress>] <bin-file>');
+    printCommandlineHelp;
     halt(-100001);
   end;
 
 begin
+  if ParamCount = 0 then
+    InvalidCommandline;
+
   RunInDebugger:=false;
   SimulateAVR6:=false;
   setRamStart := false;
   setIOStart := false;
   for i:=1 to ParamCount do
     case Copy(ParamStr(i),1,2) of
+      '-6':
+        SimulateAVR6:=true;
       '-d':
         begin
           RunInDebugger:=true;
           port:=ParamStr(i);
           delete(port,1,2);
+        end;
+      '-h':
+        begin
+          printCommandlineHelp;
+          Halt(-100001);
         end;
       '-i':
         begin
@@ -721,16 +743,14 @@ begin
           IOStart := ParamStr(i);
           delete(IOStart, 1, 2);
         end;
-      '-6':
-        SimulateAVR6:=true;
-      '-v':
-        Verbose:=true;
       '-s':
         begin
           setRamStart := true;
           RamStart := ParamStr(i);
           delete(RamStart, 1, 2);
-        end
+        end;
+      '-v':
+        Verbose:=true;
       else
         begin
           if i=Paramcount then
